@@ -4,10 +4,9 @@ TypeScript-first git hooks manager with type-safe configuration.
 
 ## Why ts-git-hooks?
 
-- 🎯 **Type-safe**: Auto-completion for your `package.json` scripts
-- ⚡ **Fast**: Parallel execution of hooks by default
-- 🪶 **Lightweight**: Minimal dependencies, simple API
-- 📝 **TypeScript Config**: Write your config in `.ts` with full IDE support
+- Type-safe: Auto-completion for your `package.json` scripts
+- Fast: Parallel execution of hooks by default
+- TypeScript Config: Write your config in `.ts` with full IDE support
 
 ## Installation
 
@@ -21,7 +20,7 @@ npm install -D ts-git-hooks
 
 Create `ts-git-hooks.config.ts` in your project root:
 
-```ts:ts-git-hooks.config.ts
+```ts
 import { TSGitHookConfig } from "ts-git-hooks";
 
 export const config: TSGitHookConfig = {
@@ -48,7 +47,7 @@ That's it! Your git hooks are ready to use.
 
 ### Basic Usage
 
-```ts:ts-git-hooks.config.ts
+```ts
 import { TSGitHookConfig } from "ts-git-hooks";
 
 export const config: TSGitHookConfig = {
@@ -68,7 +67,7 @@ export const config: TSGitHookConfig = {
 
 Scripts are automatically typed from your `package.json`:
 
-```ts:ts-git-hooks.config.ts
+```ts
 import { TSGitHookConfig } from "ts-git-hooks";
 
 // ✅ TypeScript will autocomplete available scripts
@@ -103,7 +102,7 @@ All standard git hooks are supported:
 
 ### Install hooks
 
-```bash
+```sh
 npx ts-git-hooks install
 ```
 
@@ -111,7 +110,7 @@ Sets up git hooks in `.git/hooks/`.
 
 ### Uninstall hooks
 
-```bash
+```sh
 npx ts-git-hooks uninstall
 ```
 
@@ -119,7 +118,7 @@ Removes all hooks managed by ts-git-hooks.
 
 ### List configured hooks
 
-```bash
+```sh
 npx ts-git-hooks list
 ```
 
@@ -133,7 +132,7 @@ Shows all configured hooks and their scripts.
 
 ## Example Workflow
 
-```ts:ts-git-hooks.config.ts
+```ts
 import { TSGitHookConfig } from "ts-git-hooks";
 
 export const config: TSGitHookConfig = {
@@ -146,7 +145,7 @@ export const config: TSGitHookConfig = {
 }
 ```
 
-```json:package.json
+```json
 {
   "scripts": {
     "lint": "eslint .",
@@ -168,7 +167,7 @@ Now when you commit:
 
 Create a combined script in `package.json`:
 
-```json:package.json
+```json
 {
   "scripts": {
     "pre-commit": "npm run lint && npm run format"
@@ -176,7 +175,7 @@ Create a combined script in `package.json`:
 }
 ```
 
-```ts:ts-git-hooks.config.ts
+```ts
 import { TSGitHookConfig } from "ts-git-hooks";
 
 export const config: TSGitHookConfig = {
@@ -194,7 +193,7 @@ No.
 
 Git hooks only run locally. In CI, run your scripts directly:
 
-```yaml:.github/workflows/ci.yml
+```yaml
 - run: npm run lint
 - run: npm run test
 ```
