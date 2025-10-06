@@ -168,7 +168,7 @@ Now when you commit:
 
 Create a combined script in `package.json`:
 
-```json
+```json:package.json
 {
   "scripts": {
     "pre-commit": "npm run lint && npm run format"
@@ -176,8 +176,10 @@ Create a combined script in `package.json`:
 }
 ```
 
-```typescript
-export default {
+```ts:ts-git-hooks.config.ts
+import { TSGitHookConfig } from "ts-git-hooks";
+
+export const config: TSGitHookConfig = {
   'pre-commit': {
     run: 'pre-commit'
   }
@@ -192,8 +194,7 @@ No.
 
 Git hooks only run locally. In CI, run your scripts directly:
 
-```yaml
-# .github/workflows/ci.yml
+```yaml:.github/workflows/ci.yml
 - run: npm run lint
 - run: npm run test
 ```
