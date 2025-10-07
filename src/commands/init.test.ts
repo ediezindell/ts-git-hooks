@@ -14,6 +14,16 @@ vi.mock('node:fs', () => ({
 const defaultConfigContent = `\
 import type { TSGitHookConfig } from 'ts-git-hooks';
 
+/**
+ * @see https://github.com/ediezindell/ts-git-hooks#type-safety
+ *
+ * To get full type-safety, you can pass your package.json scripts as a generic.
+ *
+ * @example
+ * import pkg from './package.json'; // Make sure resolveJsonModule is true in tsconfig
+ * type Scripts = keyof typeof pkg.scripts;
+ * export const config: TSGitHookConfig<Scripts> = { ... };
+ */
 export const config: TSGitHookConfig = {
   'pre-commit': {
     run: ['npm test'],

@@ -1,16 +1,21 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-// Since this is an ESM module, __dirname is not available. We can create a similar utility.
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const configFileName = 'ts-git-hooks.config.ts';
 
 const defaultConfigContent = `\
 import type { TSGitHookConfig } from 'ts-git-hooks';
 
+/**
+ * @see https://github.com/ediezindell/ts-git-hooks#type-safety
+ *
+ * To get full type-safety, you can pass your package.json scripts as a generic.
+ *
+ * @example
+ * import pkg from './package.json'; // Make sure resolveJsonModule is true in tsconfig
+ * type Scripts = keyof typeof pkg.scripts;
+ * export const config: TSGitHookConfig<Scripts> = { ... };
+ */
 export const config: TSGitHookConfig = {
   'pre-commit': {
     run: ['npm test'],
