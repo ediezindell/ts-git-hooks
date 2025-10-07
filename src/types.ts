@@ -1,52 +1,24 @@
-type GitHookName =
-  | 'applypatch-msg'
-  | 'pre-applypatch'
-  | 'post-applypatch'
+export type GitHook =
+  // Client-Side Hooks
   | 'pre-commit'
-  | 'pre-merge-commit'
   | 'prepare-commit-msg'
   | 'commit-msg'
   | 'post-commit'
   | 'pre-rebase'
+  | 'post-rewrite'
   | 'post-checkout'
   | 'post-merge'
   | 'pre-push'
+  | 'pre-auto-gc'
+  // Server-Side Hooks
   | 'pre-receive'
   | 'update'
-  | 'post-receive'
-  | 'post-update'
-  | 'push-to-checkout'
-  | 'pre-auto-gc'
-  | 'post-rewrite'
-  | 'sendemail-validate'
-  // camelCase aliases
-  | 'applypatchMsg'
-  | 'preApplypatch'
-  | 'postApplypatch'
-  | 'preCommit'
-  | 'preMergeCommit'
-  | 'prepareCommitMsg'
-  | 'commitMsg'
-  | 'postCommit'
-  | 'preRebase'
-  | 'postCheckout'
-  | 'postMerge'
-  | 'prePush'
-  | 'preReceive'
-  | 'postReceive'
-  | 'postUpdate'
-  | 'pushToCheckout'
-  | 'preAutoGc'
-  | 'postRewrite'
-  | 'sendemailValidate';
+  | 'post-receive';
 
-/**
- * Defines the structure for the ts-git-hooks configuration object.
- * Users will define their hooks in a `ts-git-hooks.config.ts` file according to this type.
- */
-export type TSGitHookConfig = {
-  [key in GitHookName]?: {
-    /** The npm script(s) to run for the given hook. Can be a single script or an array of scripts to be run in parallel. */
-    run: string | string[];
-  };
-};
+export type Script = string | string[];
+
+export interface HookConfig {
+  run: Script;
+}
+
+export type TSGitHookConfig = Partial<Record<GitHook, HookConfig>>;
