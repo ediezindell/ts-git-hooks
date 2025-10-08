@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 
-import { init } from './commands/init.js';
-import { install } from './commands/install.js';
-import { uninstall } from './commands/uninstall.js';
-import { list } from './commands/list.js';
-import { runHook } from './core/runner.js';
-import type { GitHook } from './types.js';
+import { init } from '../commands/init.js';
+import { install } from '../commands/install.js';
+import { uninstall } from '../commands/uninstall.js';
+import { list } from '../commands/list.js';
+import { runHook } from '../core/runner.js';
+import type { GitHook } from '../types.js';
 
-// A simple CLI router
-async function main() {
+export async function main() {
   const command = process.argv[2];
   const args = process.argv.slice(3);
 
@@ -36,7 +35,6 @@ async function main() {
         console.error('Example: ts-git-hooks run pre-commit');
         process.exit(1);
       }
-      // This is a basic validation. A more robust solution might check against the types.
       await runHook(hookName);
       break;
 
@@ -62,8 +60,11 @@ Available commands:
   }
 }
 
-main().catch(error => {
-  console.error('An unexpected error occurred:');
-  console.error(error);
-  process.exit(1);
-});
+// This check ensures that main() is called only when the script is executed directly
+if (process.env.NODE_ENV !== 'test') {
+    main().catch(error => {
+        console.error('An unexpected error occurred:');
+        console.error(error);
+        process.exit(1);
+    });
+}

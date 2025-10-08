@@ -4,7 +4,7 @@
   "description": "TypeScript-first git hooks manager with type-safe configuration.",
   "main": "dist/index.js",
   "bin": {
-    "ts-git-hooks": "dist/cli.js"
+    "ts-git-hooks": "dist/cli/index.js"
   },
   "scripts": {
     "test": "vitest",
