@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import { loadConfig } from './config';
 import type { GitHook } from '../types';
+import { getStagedFiles } from '../utils/git';
+import micromatch from 'micromatch';
 
 /**
  * Executes a single npm script using `spawn`.
@@ -43,19 +45,45 @@ export async function runHook(hookName: GitHook) {
 
   const hookConfig = config[hookName];
 
-  if (!hookConfig || !hookConfig.run || hookConfig.run.length === 0) {
-    return;
+  if (!hookConfig || Object.keys(hookConfig).length === 0) {
+    return; // No configuration for this hook
   }
 
-  const scripts = Array.isArray(hookConfig.run)
-    ? hookConfig.run
-    : [hookConfig.run];
+  const scriptsToRun = new Set<string>();
+  const { run, ...globConfigs } = hookConfig;
+
+  // Handle unconditional scripts from 'run'
+  if (run) {
+    const scripts = Array.isArray(run) ? run : [run];
+    scripts.forEach(script => scriptsToRun.add(script));
+  }
+
+  // Handle glob-based scripts
+  const stagedFiles = await getStagedFiles();
+  if (stagedFiles && stagedFiles.length > 0) {
+    for (const [globPattern, scripts] of Object.entries(globConfigs)) {
+      const matchingFiles = micromatch(stagedFiles, globPattern, {
+        matchBase: true, // Allows patterns like *.js to match files in subdirectories
+      });
+      if (matchingFiles.length > 0) {
+        const scriptsArray = Array.isArray(scripts) ? scripts : [scripts];
+        scriptsArray.forEach(script => scriptsToRun.add(script));
+      }
+    }
+  }
+
+  const finalScripts = Array.from(scriptsToRun);
+
+  if (finalScripts.length === 0) {
+    console.log(`ts-git-hooks: No scripts to run for ${hookName}.`);
+    return;
+  }
 
   console.log(`ts-git-hooks: Running scripts for ${hookName}...`);
 
   try {
     const results = await Promise.allSettled(
-      scripts.map(script => executeScript(script))
+      finalScripts.map(script => executeScript(script))
     );
 
     const failedScripts = results.filter(
@@ -63,13 +91,17 @@ export async function runHook(hookName: GitHook) {
     );
 
     if (failedScripts.length > 0) {
-      console.error(`\nts-git-hooks: ${hookName} hook failed. At least one script failed.`);
+      console.error(
+        `\nts-git-hooks: ${hookName} hook failed. At least one script failed.`
+      );
       process.exit(1);
     } else {
       console.log(`\nts-git-hooks: ${hookName} hook passed.`);
     }
   } catch (error) {
-    console.error(`\nts-git-hooks: An unexpected error occurred during the ${hookName} hook.`);
+    console.error(
+      `\nts-git-hooks: An unexpected error occurred during the ${hookName} hook.`
+    );
     process.exit(1);
   }
 }

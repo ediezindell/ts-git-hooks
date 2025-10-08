@@ -23,11 +23,26 @@ export type Script<T extends string> = T | T[];
 
 /**
  * The configuration for a single git hook.
+ * This can be a mapping of glob patterns to scripts.
+ * For backward compatibility, a `run` key can be used to execute scripts
+ * unconditionally.
+ *
  * The type parameter `T` is expected to be a union of available script names.
+ *
+ * @example
+ * // Glob-based configuration
+ * {
+ *   '*.ts': 'tsc',
+ *   '*.{js,ts}': ['eslint --fix', 'prettier --write']
+ * }
+ *
+ * @example
+ * // Simple configuration (backward compatible)
+ * {
+ *   run: ['test', 'lint']
+ * }
  */
-export interface HookConfig<T extends string> {
-  run: Script<T>;
-}
+export type HookConfig<T extends string> = Record<string, Script<T>>;
 
 /**
  * The main configuration type for `ts-git-hooks`.
@@ -41,7 +56,12 @@ export interface HookConfig<T extends string> {
  * type Scripts = keyof typeof pkg.scripts;
  *
  * export const config: TSGitHookConfig<Scripts> = {
- *   'pre-commit': { run: 'lint' } // Will be type-checked
+ *   'pre-commit': {
+ *     '*.ts': 'test'
+ *   },
+ *   'pre-push': {
+ *      run: 'build'
+ *   }
  * };
  */
 export type TSGitHookConfig<T extends string = string> = Partial<
