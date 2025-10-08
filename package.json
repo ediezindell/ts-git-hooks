@@ -10,7 +10,7 @@
     "test": "vitest",
     "lint": "biome lint .",
     "format": "biome format --write .",
-    "build": "tsc"
+    "build": "./node_modules/.bin/tsc"
   },
   "repository": {
     "type": "git",
