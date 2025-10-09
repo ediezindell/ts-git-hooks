@@ -16,10 +16,22 @@ export type GitHook =
   | 'post-receive';
 
 /**
+ * A function that takes a list of file paths and returns a command string.
+ */
+export type ArgsFn = (files: string[]) => string;
+
+/**
+ * Represents a command to be executed. It can be a simple string (script name)
+ * or a tuple containing the script name and a function to generate arguments.
+ * The type parameter `T` is expected to be a union of available script names.
+ */
+export type Command<T extends string> = T | [T, ArgsFn];
+
+/**
  * Represents a single script or an array of scripts to be run.
  * The type parameter `T` is expected to be a union of available script names.
  */
-export type Script<T extends string> = T | T[];
+export type Script<T extends string> = Command<T> | Command<T>[];
 
 /**
  * The configuration for a single git hook.

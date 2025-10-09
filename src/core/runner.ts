@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { loadConfig } from './config';
-import type { GitHook } from '../types';
+import type { GitHook, Command } from '../types';
 import {
   getStagedFiles,
   hasUnstagedChanges,
@@ -58,23 +58,63 @@ export async function runHook(hookName: GitHook): Promise<boolean> {
 
   const scriptsToRun = new Set<string>();
   const { run, ...globConfigs } = hookConfig;
+  const stagedFiles = await getStagedFiles();
 
   // Handle unconditional scripts from 'run'
   if (run) {
-    const scripts = Array.isArray(run) ? run : [run];
-    scripts.forEach(script => scriptsToRun.add(script));
+    const isCommandTuple = Array.isArray(run) && typeof run[1] === 'function';
+    const commands: Command<string>[] = isCommandTuple
+      ? [run as Command<string>]
+      : Array.isArray(run)
+      ? (run as Command<string>[])
+      : [run as Command<string>];
+
+    for (const command of commands) {
+      // A command is a tuple if it's an array and its second element is a function.
+      if (Array.isArray(command) && typeof command[1] === 'function') {
+        const [, argsFn] = command;
+        scriptsToRun.add(argsFn(stagedFiles ?? []));
+      } else {
+        // It's a string. For `run`, we pass staged files as the default.
+        scriptsToRun.add(
+          stagedFiles && stagedFiles.length > 0
+            ? `${command} ${stagedFiles.join(' ')}`
+            : String(command)
+        );
+      }
+    }
   }
 
   // Handle glob-based scripts
-  const stagedFiles = await getStagedFiles();
   if (stagedFiles && stagedFiles.length > 0) {
-    for (const [globPattern, scripts] of Object.entries(globConfigs)) {
+    for (const [globPattern, scriptOrScripts] of Object.entries(
+      globConfigs
+    )) {
       const matchingFiles = micromatch(stagedFiles, globPattern, {
         matchBase: true, // Allows patterns like *.js to match files in subdirectories
       });
+
       if (matchingFiles.length > 0) {
-        const scriptsArray = Array.isArray(scripts) ? scripts : [scripts];
-        scriptsArray.forEach(script => scriptsToRun.add(script));
+        const isCommandTuple =
+          Array.isArray(scriptOrScripts) &&
+          typeof scriptOrScripts[1] === 'function';
+
+        const commands: Command<string>[] = isCommandTuple
+          ? [scriptOrScripts as Command<string>]
+          : Array.isArray(scriptOrScripts)
+          ? (scriptOrScripts as Command<string>[])
+          : [scriptOrScripts as Command<string>];
+
+        for (const command of commands) {
+          // A command is a tuple if it's an array and its second element is a function.
+          if (Array.isArray(command) && typeof command[1] === 'function') {
+            const [, argsFn] = command;
+            scriptsToRun.add(argsFn(matchingFiles));
+          } else {
+            // It's a string, so append the matching files
+            scriptsToRun.add(`${command} ${matchingFiles.join(' ')}`);
+          }
+        }
       }
     }
   }
