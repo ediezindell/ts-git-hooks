@@ -1,7 +1,14 @@
 import { spawn } from 'node:child_process';
 import { loadConfig } from './config';
 import type { GitHook } from '../types';
-import { getStagedFiles } from '../utils/git';
+import {
+  getStagedFiles,
+  hasUnstagedChanges,
+  stashPushKeepIndex,
+  stashPop,
+  getChangedFiles,
+  addFiles,
+} from '../utils/git';
 import micromatch from 'micromatch';
 
 /**
@@ -33,20 +40,20 @@ function executeScript(script: string): Promise<void> {
 /**
  * Runs the configured scripts for a given git hook.
  * @param hookName The name of the git hook being triggered.
+ * @returns A promise that resolves to `true` if the hook succeeds, `false` otherwise.
  */
-export async function runHook(hookName: GitHook) {
+export async function runHook(hookName: GitHook): Promise<boolean> {
   const config = await loadConfig();
 
   if (!config) {
     console.error('Error: ts-git-hooks configuration file not found.');
-    process.exit(1);
-    return;
+    return false;
   }
 
   const hookConfig = config[hookName];
 
   if (!hookConfig || Object.keys(hookConfig).length === 0) {
-    return; // No configuration for this hook
+    return true; // No configuration for this hook, so it's a success
   }
 
   const scriptsToRun = new Set<string>();
@@ -76,12 +83,20 @@ export async function runHook(hookName: GitHook) {
 
   if (finalScripts.length === 0) {
     console.log(`ts-git-hooks: No scripts to run for ${hookName}.`);
-    return;
+    return true;
   }
 
-  console.log(`ts-git-hooks: Running scripts for ${hookName}...`);
+  let stashCreated = false;
 
   try {
+    // 1. Stash unstaged changes if they exist
+    if (await hasUnstagedChanges()) {
+      console.log('ts-git-hooks: Stashing unstaged changes...');
+      stashCreated = await stashPushKeepIndex();
+    }
+
+    // 2. Run the scripts
+    console.log(`ts-git-hooks: Running scripts for ${hookName}...`);
     const results = await Promise.allSettled(
       finalScripts.map(script => executeScript(script))
     );
@@ -91,17 +106,45 @@ export async function runHook(hookName: GitHook) {
     );
 
     if (failedScripts.length > 0) {
-      console.error(
-        `\nts-git-hooks: ${hookName} hook failed. At least one script failed.`
+      throw new Error(
+        `\n${hookName} hook failed. At least one script failed.`
       );
-      process.exit(1);
-    } else {
-      console.log(`\nts-git-hooks: ${hookName} hook passed.`);
     }
-  } catch (error) {
+
+    // 3. For pre-commit, stage any changes made by the scripts
+    if (hookName === 'pre-commit') {
+      const changedFiles = await getChangedFiles();
+      if (changedFiles.length > 0) {
+        console.log(
+          'ts-git-hooks: Adding modified files to the index...'
+        );
+        await addFiles(changedFiles);
+      }
+    }
+
+    console.log(`\nts-git-hooks: ${hookName} hook passed.`);
+    return true;
+  } catch (error: any) {
     console.error(
-      `\nts-git-hooks: An unexpected error occurred during the ${hookName} hook.`
+      `\nts-git-hooks: An error occurred during the ${hookName} hook.`
     );
-    process.exit(1);
+    if (error && error.message) {
+      console.error(error.message);
+    }
+    return false;
+  } finally {
+    // 4. Pop the stash if one was created
+    if (stashCreated) {
+      try {
+        console.log('ts-git-hooks: Restoring unstaged changes...');
+        await stashPop();
+      } catch (stashError) {
+        console.error(
+          `\nCRITICAL: Failed to restore unstaged changes. Please resolve conflicts manually.`
+        );
+        // This is a critical failure, we need to inform the user and exit
+        process.exit(1);
+      }
+    }
   }
 }

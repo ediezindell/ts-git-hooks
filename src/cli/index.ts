@@ -35,7 +35,10 @@ export async function main() {
         console.error('Example: ts-git-hooks run pre-commit');
         process.exit(1);
       }
-      await runHook(hookName);
+      const success = await runHook(hookName);
+      if (!success) {
+        process.exit(1);
+      }
       break;
 
     case undefined:
