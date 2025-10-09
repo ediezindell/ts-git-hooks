@@ -116,6 +116,29 @@ describe('Glob-based script execution', () => {
     );
     expect(result).toBe(true);
   });
+
+  it('should execute unconditional scripts without arguments if no files are staged', async () => {
+    vi.mocked(loadConfig).mockResolvedValue({
+      'pre-commit': { run: 'lint' },
+    });
+    // Ensure no staged files are found
+    vi.mocked(getStagedFiles).mockResolvedValue([]);
+    vi.mocked(spawn).mockImplementation(() => {
+      const p = new MockChildProcess();
+      simulateSuccess(p);
+      return p as any;
+    });
+
+    const result = await runHook('pre-commit');
+
+    // Verify that the script is called without any additional arguments
+    expect(spawn).toHaveBeenCalledWith(
+      'npm',
+      ['run', 'lint'],
+      expect.any(Object)
+    );
+    expect(result).toBe(true);
+  });
 });
 
 describe('Auto-Fixing and Stashing', () => {
