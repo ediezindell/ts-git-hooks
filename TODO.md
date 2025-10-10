@@ -1,9 +1,9 @@
 # TODO
 
-- [x] Implement glob pattern filtering for running scripts on specific files.
-  - Allow users to specify file extensions or glob patterns to determine which scripts to run.
-  - This would enable functionality similar to `lint-staged`.
-  - Example:
+- [x] ファイル指定のためのglobパターンフィルターを実装する。
+  - ユーザーがファイル拡張子やglobパターンを指定して、どのスクリプトを実行するか決定できるようにする。
+  - これにより `lint-staged` のような機能が実現できる。
+  - 例:
     ```ts
     export const config: TSGitHookConfig = {
       'pre-commit': {
@@ -12,4 +12,22 @@
       }
     }
     ```
-- [ ] Pass staged file paths as arguments to scripts.
+- [ ] ステージされたファイルのパスをスクリプトの引数として渡す。
+
+---
+### レビュー項目 (2025-10-10)
+
+#### ドキュメント
+- [ ] `run` コマンドが内部利用向けであることをCLIのヘルプメッセージに追記する。
+- [ ] `ArgsFn` とコマンドタプル機能 (`[script, (files) => string]`) について `README.md` に記載する。
+- [ ] `init` のテンプレートを改善し、`pkg.scripts` を利用した型安全機能について、より分かりやすく説明するかデフォルトで有効にする。
+
+#### テスト
+- [ ] `exec` をモックして `utils/git.ts` の単体テストを追加する。
+- [ ] `core/runner.ts` に対して、globパターンと `run` を組み合わせたシナリオをカバーするテストケースを追加する。
+- [ ] `cli/index.test.ts` にて、コマンド失敗時に `process.exit(1)` が呼ばれることを確認するテストを追加する。
+
+#### ユーザーエクスペリエンス (UX)
+- [ ] `init` コマンドのデフォルトを `npm test` から `lint` のような、より軽量なコマンドに変更する。
+- [ ] デバッグしやすいように `core/runner.ts` で実行されるフルコマンド（引数を含む）をログに出力する。
+- [ ] `install` コマンド実行前に `.git` ディレクトリの存在をチェックする処理を追加する。
