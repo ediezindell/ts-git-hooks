@@ -12,7 +12,7 @@ function execGit(command: string): Promise<string> {
         reject(error);
         return;
       }
-      resolve(stdout.trim());
+      resolve(stdout);
     });
   });
 }

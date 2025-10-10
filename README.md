@@ -85,6 +85,44 @@ export const config: TSGitHookConfig = {
 }
 ```
 
+### Glob Pattern Matching
+
+You can run scripts only for specific files using glob patterns. This is useful for tools like linters or formatters that should only run on relevant files.
+
+```ts
+import { TSGitHookConfig } from "ts-git-hooks";
+
+export const config: TSGitHookConfig = {
+  'pre-commit': {
+    '*.{js,ts}': 'eslint --fix',
+    '*.{css,scss}': 'stylelint --fix',
+    'package.json': 'npm install',
+  }
+}
+```
+When you commit, `eslint` will only run if there are staged `.js` or `.ts` files. The staged file paths are automatically passed as arguments to the script.
+
+### Customizing Arguments with `ArgsFn`
+
+For more control over how arguments are passed, you can provide a function, `ArgsFn`, as the second element of a command tuple. This function receives an array of matching file paths and should return the final command string.
+
+The type of `ArgsFn` is `(files: string[]) => string`.
+
+**Example: Passing files with a `--files` flag**
+
+```ts
+import { TSGitHookConfig } from "ts-git-hooks";
+
+const prettierCommand = (files: string[]) => `prettier --write --files ${files.join(' ')}`;
+
+export const config: TSGitHookConfig = {
+  'pre-commit': {
+    '*.{js,ts,css}': ['prettier', prettierCommand],
+  }
+}
+```
+In this example, if `a.js` and `b.ts` are staged, the command `npm run prettier --write --files a.js b.ts` will be executed.
+
 ## Supported Hooks
 
 All standard git hooks are supported:

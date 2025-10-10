@@ -10,7 +10,7 @@ vi.mock('node:fs', () => ({
     mkdir: vi.fn(),
     writeFile: vi.fn(),
     chmod: vi.fn(),
-    access: vi.fn().mockRejectedValue(new Error('File not found')), // Default to not found
+    stat: vi.fn().mockResolvedValue({ isDirectory: () => true }), // Default to .git being a directory
   },
 }));
 vi.mock('../core/config');
@@ -18,6 +18,8 @@ vi.mock('../core/config');
 const gitHooksDir = path.join(process.cwd(), '.git', 'hooks');
 
 describe('install command', () => {
+  let errorSpy: vi.SpyInstance;
+
   beforeEach(() => {
     // Reset mocks before each test
     vi.mocked(loadConfig).mockResolvedValue({
@@ -25,16 +27,16 @@ describe('install command', () => {
       'pre-push': { run: ['test'] },
     });
     vi.spyOn(console, 'log').mockImplementation(() => {});
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // Ensure stat mock is reset to a valid state before each test
+    vi.mocked(fs.stat).mockResolvedValue({ isDirectory: () => true } as any);
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('should create .git/hooks directory if it does not exist', async () => {
-    // Arrange
-    vi.mocked(fs.access).mockRejectedValueOnce(new Error('Dir not found')); // For .git/hooks
-
+  it('should create .git/hooks directory', async () => {
     // Act
     await install();
 
@@ -87,5 +89,35 @@ describe('install command', () => {
     // Assert
     expect(fs.writeFile).not.toHaveBeenCalled();
     expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Configuration file not found or is empty.'));
+  });
+
+  it('should show an error if .git directory is missing', async () => {
+    // Arrange
+    const error = new Error('Not found');
+    (error as any).code = 'ENOENT';
+    vi.mocked(fs.stat).mockRejectedValue(error);
+
+    // Act
+    await install();
+
+    // Assert
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('This does not appear to be a git repository.')
+    );
+    expect(fs.mkdir).not.toHaveBeenCalled(); // Should not proceed with installation
+  });
+
+  it('should show an error if .git is a file, not a directory', async () => {
+    // Arrange
+    vi.mocked(fs.stat).mockResolvedValue({ isDirectory: () => false } as any);
+
+    // Act
+    await install();
+
+    // Assert
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('A .git file exists but it is not a directory.')
+    );
+    expect(fs.mkdir).not.toHaveBeenCalled(); // Should not proceed
   });
 });

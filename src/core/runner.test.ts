@@ -141,6 +141,64 @@ describe('Glob-based script execution', () => {
   });
 });
 
+describe('Combined glob and unconditional script execution', () => {
+  beforeEach(() => {
+    setupDefaultMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('should execute both unconditional and glob-matching scripts', async () => {
+    vi.mocked(loadConfig).mockResolvedValue({
+      'pre-commit': {
+        run: 'lint', // Unconditional
+        '*.ts': 'tsc', // Glob for .ts files
+        '*.css': ['stylelint', (files) => `stylelint --fix ${files.join(' ')}`], // Glob with custom args
+      },
+    });
+
+    const stagedFiles = ['src/index.ts', 'styles/main.css', 'README.md'];
+    vi.mocked(getStagedFiles).mockResolvedValue(stagedFiles);
+
+    // Mock spawn to succeed for all calls
+    vi.mocked(spawn).mockImplementation(() => {
+      const p = new MockChildProcess();
+      simulateSuccess(p);
+      return p as any;
+    });
+
+    const result = await runHook('pre-commit');
+
+    // Verify all expected scripts were called
+    expect(spawn).toHaveBeenCalledTimes(3);
+
+    // 1. Unconditional script with all staged files
+    expect(spawn).toHaveBeenCalledWith(
+      'npm',
+      ['run', `lint ${stagedFiles.join(' ')}`],
+      expect.any(Object)
+    );
+
+    // 2. Glob-matching script for .ts files
+    expect(spawn).toHaveBeenCalledWith(
+      'npm',
+      ['run', 'tsc src/index.ts'],
+      expect.any(Object)
+    );
+
+    // 3. Glob-matching script with a custom function for .css files
+    expect(spawn).toHaveBeenCalledWith(
+      'npm',
+      ['run', 'stylelint --fix styles/main.css'],
+      expect.any(Object)
+    );
+
+    expect(result).toBe(true);
+  });
+});
+
 describe('Auto-Fixing and Stashing', () => {
   let exitSpy: vi.SpyInstance;
 

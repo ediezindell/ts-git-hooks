@@ -21,6 +21,27 @@ npx ts-git-hooks run ${hook}
  * Installs the git hooks based on the configuration file.
  */
 export async function install() {
+  const gitDir = path.join(process.cwd(), '.git');
+
+  try {
+    const stats = await fs.stat(gitDir);
+    if (!stats.isDirectory()) {
+      console.error(
+        'Error: A .git file exists but it is not a directory. Please check your repository structure.'
+      );
+      return;
+    }
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      console.error(
+        'Error: This does not appear to be a git repository. The .git directory is missing.'
+      );
+    } else {
+      console.error('Error: Failed to check for .git directory.', error);
+    }
+    return;
+  }
+
   const config = await loadConfig();
 
   if (!config || Object.keys(config).length === 0) {

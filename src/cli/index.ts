@@ -52,7 +52,6 @@ Available commands:
   install     Install git hooks based on the configuration.
   uninstall   Remove installed git hooks.
   list        List all configured hooks.
-  run <hook>  Run the scripts for a specific hook (for internal use).
       `);
       break;
 

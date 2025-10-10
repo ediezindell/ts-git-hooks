@@ -89,4 +89,13 @@ describe('CLI entry point', () => {
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown command'));
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
+
+  it('should exit with code 1 if the run hook fails', async () => {
+    vi.spyOn(process, 'argv', 'get').mockReturnValue(['node', 'ts-git-hooks', 'run', 'pre-commit']);
+    mockRunHook.mockResolvedValue(false); // Simulate a failed hook
+    const main = await getCliMain();
+    await main();
+    expect(mockRunHook).toHaveBeenCalledWith('pre-commit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
 });

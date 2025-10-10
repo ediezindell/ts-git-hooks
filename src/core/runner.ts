@@ -17,7 +17,7 @@ import micromatch from 'micromatch';
  */
 function executeScript(script: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    console.log(`> Running script: ${script}`);
+    console.log(`> npm run ${script}`);
     const child = spawn('npm', ['run', script], {
       stdio: 'inherit',
       shell: true, // Use shell for better cross-platform compatibility

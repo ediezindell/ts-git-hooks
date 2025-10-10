@@ -7,18 +7,26 @@ const defaultConfigContent = `\
 import type { TSGitHookConfig } from 'ts-git-hooks';
 
 /**
- * @see https://github.com/ediezindell/ts-git-hooks#type-safety
+ * To enable type-safe git hooks and get autocompletion for your npm scripts,
+ * follow these steps:
  *
- * To get full type-safety, you can pass your package.json scripts as a generic.
+ * 1. In your 'tsconfig.json', make sure 'resolveJsonModule' is set to true.
+ *    {
+ *      "compilerOptions": {
+ *        "resolveJsonModule": true
+ *      }
+ *    }
  *
- * @example
- * import pkg from './package.json'; // Make sure resolveJsonModule is true in tsconfig
- * type Scripts = keyof typeof pkg.scripts;
- * export const config: TSGitHookConfig<Scripts> = { ... };
+ * 2. Uncomment the following lines to import your package.json.
+ *    // import pkg from './package.json';
+ *    // type Scripts = keyof typeof pkg.scripts;
+ *
+ * 3. Add the 'Scripts' generic to the TSGitHookConfig type.
+ *    // export const config: TSGitHookConfig<Scripts> = {
  */
 export const config: TSGitHookConfig = {
   'pre-commit': {
-    run: ['npm test'],
+    run: ['npm run lint'],
   },
   'pre-push': {
     run: [],
