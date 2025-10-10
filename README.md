@@ -201,39 +201,81 @@ Now when you commit:
 
 ## FAQ
 
-### Q: What if I need sequential execution?
+### Q: How do I run scripts sequentially instead of in parallel?
+By default, scripts are run in parallel for maximum speed. If you need to run them in a specific order, create a combined script in your `package.json`.
 
-Create a combined script in `package.json`:
-
+**`package.json`**
 ```json
 {
   "scripts": {
-    "pre-commit": "npm run lint && npm run format"
+    "lint-and-format": "npm run lint && npm run format"
   }
 }
 ```
 
+**`ts-git-hooks.config.ts`**
 ```ts
-import { TSGitHookConfig } from "ts-git-hooks";
-
 export const config: TSGitHookConfig = {
   'pre-commit': {
-    run: 'pre-commit'
+    run: 'lint-and-format'
   }
 }
 ```
 
-### Q: Can I use JavaScript instead of TypeScript?
+### Q: How can I automatically format my code on commit?
+Use a glob pattern to run your formatter only on staged files. The hook will automatically stage any changes made by the formatter.
 
-No.
+```ts
+export const config: TSGitHookConfig = {
+  'pre-commit': {
+    '*.{js,ts,css,md}': 'prettier --write'
+  }
+}
+```
+Now, when you `git commit`, any staged `.ts` or `.css` files will be automatically formatted by Prettier.
 
-### Q: Does this work in CI?
+### Q: How do I run a script only on files in a specific directory?
+You can use more specific glob patterns to target directories. For example, to run tests only for staged files within the `src/` directory:
 
-Git hooks only run locally. In CI, run your scripts directly:
+```ts
+export const config: TSGitHookConfig = {
+  'pre-commit': {
+    'src/**/*.{js,ts}': 'vitest related'
+  }
+}
+```
 
+### Q: What's the difference between `run` and a glob pattern?
+- **`run`**: Scripts listed under `run` are **unconditional**. They always execute when the hook is triggered. If there are staged files, their paths will be passed as arguments.
+- **Glob Pattern (`'*.ts'`)**: Scripts under a glob pattern are **conditional**. They only execute if at least one staged file matches the pattern. Only the paths of the matching files are passed as arguments.
+
+**Example Scenario:**
+You want to always run a `lint` script on all staged files, but only run `tsc` if TypeScript files have changed.
+
+```ts
+export const config: TSGitHookConfig = {
+  'pre-commit': {
+    // Always runs on all staged files
+    run: 'lint',
+    // Only runs if staged files include at least one .ts file
+    '*.ts': 'tsc --noEmit'
+  }
+}
+```
+
+### Q: Can I use this tool with plain JavaScript?
+No, this tool is designed for TypeScript projects to leverage type-safety in configuration.
+
+### Q: Does this work in a CI/CD environment?
+Git hooks are designed for local development and are not executed in most CI/CD environments. You should run your validation scripts (linting, testing, etc.) as explicit steps in your CI pipeline.
+
+**`.github/workflows/ci.yml`**
 ```yaml
-- run: npm run lint
-- run: npm run test
+- name: Run Linter
+  run: npm run lint
+
+- name: Run Tests
+  run: npm run test
 ```
 
 ## License
