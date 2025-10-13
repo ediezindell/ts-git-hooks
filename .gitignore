@@ -19,3 +19,7 @@ pnpm-debug.log*
 # OS-specific
 .DS_Store
 Thumbs.db
+.gemini
+.kiro
+GEMINI.md
+TODO.md
