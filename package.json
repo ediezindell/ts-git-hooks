@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "TypeScript-first git hooks manager with type-safe configuration.",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
     "ts-git-hooks": "dist/cli/index.js"
   },
