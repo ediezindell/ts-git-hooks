@@ -34,6 +34,32 @@ describe("list command", () => {
 		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("test, build"));
 	});
 
+	it("should correctly list glob-based configurations", async () => {
+		// Arrange
+		vi.mocked(loadConfig).mockResolvedValue({
+			"pre-commit": {
+				"*.{js,ts}": "lint",
+				"*.css": ["stylelint"],
+			},
+			"pre-push": {
+				run: "test",
+			},
+		});
+
+		// Act
+		await list();
+
+		// Assert
+		expect(logSpy).toHaveBeenCalledWith("Configured git hooks:");
+		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("pre-commit"));
+		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("pre-push"));
+		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("test"));
+		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("*.{js,ts}"));
+		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("lint"));
+		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("*.css"));
+		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("stylelint"));
+	});
+
 	it("should display a message if no hooks are configured", async () => {
 		// Arrange
 		vi.mocked(loadConfig).mockResolvedValue({});
