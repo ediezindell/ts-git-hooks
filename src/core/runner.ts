@@ -57,7 +57,7 @@ export async function runHook(hookName: GitHook): Promise<boolean> {
 	}
 
 	const scriptsToRun = new Set<string>();
-	const { run, ...globConfigs } = hookConfig;
+	const { "*": run, ...globConfigs } = hookConfig;
 	const stagedFiles = await getStagedFiles();
 
 	// Handle unconditional scripts from 'run'
@@ -75,7 +75,7 @@ export async function runHook(hookName: GitHook): Promise<boolean> {
 				const [, argsFn] = command;
 				scriptsToRun.add(argsFn(stagedFiles ?? []));
 			} else {
-				// It's a string. For `run`, we pass staged files as the default.
+				// It's a string. For `*`, we pass staged files as the default.
 				scriptsToRun.add(
 					stagedFiles && stagedFiles.length > 0
 						? `${command} ${stagedFiles.join(" ")}`

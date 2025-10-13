@@ -25,10 +25,10 @@ import { TSGitHookConfig } from "ts-git-hooks";
 
 export const config: TSGitHookConfig = {
   'pre-commit': {
-    run: ['lint', 'format']
+    '*': ['lint', 'format']
   },
   'pre-push': {
-    run: ['test', 'typecheck']
+    '*': ['test', 'typecheck']
   }
 }
 ```
@@ -52,13 +52,13 @@ import { TSGitHookConfig } from "ts-git-hooks";
 
 export const config: TSGitHookConfig = {
   'pre-commit': {
-    run: 'lint'  // Single script
+    '*': 'lint'  // Single script
   },
   'commit-msg': {
-    run: ['commitlint']  // Array for multiple scripts
+    '*': ['commitlint']  // Array for multiple scripts
   },
   'pre-push': {
-    run: ['test', 'build']  // Runs in parallel
+    '*': ['test', 'build']  // Runs in parallel
   }
 }
 ```
@@ -73,14 +73,14 @@ import { TSGitHookConfig } from "ts-git-hooks";
 // ✅ TypeScript will autocomplete available scripts
 export const config: TSGitHookConfig = {
   'pre-commit': {
-    run: ['lint', 'format']  // IDE autocomplete works!
+    '*': ['lint', 'format']  // IDE autocomplete works!
   }
 }
 
 // ❌ TypeScript error if script doesn't exist
 export const config: TSGitHookConfig = {
   'pre-commit': {
-    run: ['nonexistent']  // Error: "nonexistent" is not in package.json
+    '*': ['nonexistent']  // Error: "nonexistent" is not in package.json
   }
 }
 ```
@@ -137,10 +137,10 @@ import { TSGitHookConfig } from "ts-git-hooks";
 
 export const config: TSGitHookConfig = {
   'pre-commit': {
-    run: ['lint', 'format', 'typecheck']
+    '*': ['lint', 'format', 'typecheck']
   },
   'pre-push': {
-    run: ['test']
+    '*': ['test']
   }
 }
 ```
@@ -180,7 +180,7 @@ import { TSGitHookConfig } from "ts-git-hooks";
 
 export const config: TSGitHookConfig = {
   'pre-commit': {
-    run: 'pre-commit'
+    '*': 'pre-commit'
   }
 }
 ```

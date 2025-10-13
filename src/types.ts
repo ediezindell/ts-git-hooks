@@ -36,8 +36,7 @@ export type Script<T extends string> = Command<T> | Command<T>[];
 /**
  * The configuration for a single git hook.
  * This can be a mapping of glob patterns to scripts.
- * For backward compatibility, a `run` key can be used to execute scripts
- * unconditionally.
+ * A special `*` key can be used to execute scripts unconditionally.
  *
  * The type parameter `T` is expected to be a union of available script names.
  *
@@ -49,9 +48,9 @@ export type Script<T extends string> = Command<T> | Command<T>[];
  * }
  *
  * @example
- * // Simple configuration (backward compatible)
+ * // Simple configuration
  * {
- *   run: ['test', 'lint']
+ *   '*': ['test', 'lint']
  * }
  */
 export type HookConfig<T extends string> = Record<string, Script<T>>;
@@ -72,7 +71,7 @@ export type HookConfig<T extends string> = Record<string, Script<T>>;
  *     '*.ts': 'test'
  *   },
  *   'pre-push': {
- *      run: 'build'
+ *      '*': 'build'
  *   }
  * };
  */

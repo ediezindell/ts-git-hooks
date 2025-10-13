@@ -55,7 +55,7 @@ describe("runHook", () => {
 	});
 
 	it("should return true on successful script execution", async () => {
-		vi.mocked(loadConfig).mockResolvedValue({ "pre-commit": { run: "lint" } });
+		vi.mocked(loadConfig).mockResolvedValue({ "pre-commit": { "*": "lint" } });
 		vi.mocked(spawn).mockImplementationOnce(() => {
 			const p = new MockChildProcess();
 			simulateSuccess(p);
@@ -66,7 +66,7 @@ describe("runHook", () => {
 	});
 
 	it("should return false if a script fails", async () => {
-		vi.mocked(loadConfig).mockResolvedValue({ "pre-commit": { run: "test" } });
+		vi.mocked(loadConfig).mockResolvedValue({ "pre-commit": { "*": "test" } });
 		vi.mocked(spawn).mockImplementationOnce(() => {
 			const p = new MockChildProcess();
 			simulateFailure(p);
@@ -77,7 +77,7 @@ describe("runHook", () => {
 	});
 
 	it("should return true if hook is not in config", async () => {
-		vi.mocked(loadConfig).mockResolvedValue({ "pre-commit": { run: "lint" } });
+		vi.mocked(loadConfig).mockResolvedValue({ "pre-commit": { "*": "lint" } });
 		const result = await runHook("pre-push");
 		expect(result).toBe(true);
 	});
@@ -119,7 +119,7 @@ describe("Glob-based script execution", () => {
 
 	it("should execute unconditional scripts without arguments if no files are staged", async () => {
 		vi.mocked(loadConfig).mockResolvedValue({
-			"pre-commit": { run: "lint" },
+			"pre-commit": { "*": "lint" },
 		});
 		// Ensure no staged files are found
 		vi.mocked(getStagedFiles).mockResolvedValue([]);
@@ -148,7 +148,7 @@ describe("Auto-Fixing and Stashing", () => {
 		setupDefaultMocks();
 		exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {}) as any);
 		vi.mocked(loadConfig).mockResolvedValue({
-			"pre-commit": { run: "format" },
+			"pre-commit": { "*": "format" },
 		});
 		vi.mocked(spawn).mockImplementation(() => {
 			const p = new MockChildProcess();
