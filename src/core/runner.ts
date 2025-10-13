@@ -1,6 +1,13 @@
 import { spawn } from "node:child_process";
 import micromatch from "micromatch";
-import type { Command, KebabCaseGitHook } from "../types";
+import type {
+	ArgsFn,
+	CamelCaseGitHook,
+	Command,
+	HookConfig,
+	KebabCaseGitHook,
+	Script,
+} from "../types";
 import {
 	addFiles,
 	getChangedFiles,
@@ -9,7 +16,107 @@ import {
 	stashPop,
 	stashPushKeepIndex,
 } from "../utils/git";
+import { kebabToCamel } from "../utils/string";
 import { loadConfig } from "./config";
+
+/**
+ * Processes a command, resolving it to a final script string.
+ * @param command The command to process.
+ * @param files The list of files to pass to the command.
+ * @returns The resolved script string.
+ */
+function processCommand(
+	command: Command<string>,
+	files: string[],
+	isGlob: boolean,
+): string {
+	if (Array.isArray(command) && typeof command[1] === "function") {
+		// Command is a tuple: [script, formatArguments]
+		const [script, formatArguments] = command as [string, ArgsFn];
+		return formatArguments(files, script);
+	}
+
+	const script = String(command);
+	// For glob-based hooks, append file paths by default.
+	// For other hooks, only do so if they explicitly use a function.
+	if (isGlob && files.length > 0) {
+		return `${script} ${files.join(" ")}`;
+	}
+
+	return script;
+}
+
+/**
+ * Normalizes a script configuration into a consistent array of commands.
+ * @param script The script configuration to process.
+ * @returns An array of commands.
+ */
+const getCommands = (script: Script<string>): Command<string>[] => {
+	if (Array.isArray(script)) {
+		// Check if it's a command tuple like [string, ArgsFn]
+		if (
+			script.length === 2 &&
+			typeof script[0] === "string" &&
+			typeof script[1] === "function"
+		) {
+			return [script as Command<string>];
+		}
+		// Otherwise, it's an array of commands
+		return script as Command<string>[];
+	}
+	// It's a single command string
+	return [script as Command<string>];
+};
+
+/**
+ * Resolves the scripts to run for a given hook configuration.
+ * @param hookConfig The configuration for the specific git hook.
+ * @param stagedFiles The list of currently staged files.
+ * @returns An array of script strings to execute.
+ */
+function resolveScriptsToRun(
+	hookConfig: HookConfig,
+	stagedFiles: string[] | null,
+): string[] {
+	const scriptsToRun = new Set<string>();
+
+	const processListOfCommands = (
+		commands: Command<string>[],
+		files: string[],
+		isGlob: boolean,
+	) => {
+		for (const command of commands) {
+			scriptsToRun.add(processCommand(command, files, isGlob));
+		}
+	};
+
+	const isGlob =
+		typeof hookConfig === "object" &&
+		!Array.isArray(hookConfig) &&
+		hookConfig !== null;
+
+	if (isGlob) {
+		if (stagedFiles && stagedFiles.length > 0) {
+			for (const [globPattern, script] of Object.entries(hookConfig)) {
+				const matchingFiles = micromatch(stagedFiles, globPattern, {
+					matchBase: true,
+				});
+
+				if (matchingFiles.length > 0) {
+					const commandsToProcess = getCommands(script);
+					processListOfCommands(commandsToProcess, matchingFiles, true);
+				}
+			}
+		}
+	}
+	// Case 2: Unconditional configuration
+	else {
+		const commandsToProcess = getCommands(hookConfig);
+		processListOfCommands(commandsToProcess, stagedFiles ?? [], false);
+	}
+
+	return Array.from(scriptsToRun);
+}
 
 /**
  * Executes a single npm script using `spawn`.
@@ -18,15 +125,18 @@ import { loadConfig } from "./config";
 function executeScript(script: string): Promise<void> {
 	return new Promise((resolve, reject) => {
 		console.log(`> Running script: ${script}`);
+		// The entire script string (command + args) is passed to `npm run`.
+		// `shell: true` allows the shell to parse the command and its arguments.
 		const child = spawn("npm", ["run", script], {
 			stdio: "inherit",
-			shell: true, // Use shell for better cross-platform compatibility
+			shell: true,
 		});
 
 		child.on("close", (code) => {
 			if (code === 0) {
 				resolve();
 			} else {
+				// Reject the promise if the script fails
 				reject(new Error(`Script "${script}" exited with code ${code}`));
 			}
 		});
@@ -44,71 +154,18 @@ function executeScript(script: string): Promise<void> {
  */
 export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	const config = await loadConfig();
-
 	if (!config) {
 		console.error("Error: ts-git-hooks configuration file not found.");
 		return false;
 	}
 
-	const hookConfig = config[hookName];
-
+	const hookConfig = config[kebabToCamel(hookName) as CamelCaseGitHook];
 	if (!hookConfig || Object.keys(hookConfig).length === 0) {
 		return true; // No configuration for this hook, so it's a success
 	}
 
-	const scriptsToRun = new Set<string>();
 	const stagedFiles = await getStagedFiles();
-
-	// Check if the hook config is for glob-based scripts (an object) or unconditional.
-	if (
-		typeof hookConfig === "object" &&
-		!Array.isArray(hookConfig) &&
-		hookConfig !== null
-	) {
-		// Glob-based execution for file-dependent hooks
-		if (stagedFiles && stagedFiles.length > 0) {
-			for (const [globPattern, scriptOrScripts] of Object.entries(
-				hookConfig,
-			)) {
-				const matchingFiles = micromatch(stagedFiles, globPattern, {
-					matchBase: true,
-				});
-
-				if (matchingFiles.length > 0) {
-					const commands: Command<string>[] = Array.isArray(scriptOrScripts)
-						? (scriptOrScripts as Command<string>[])
-						: [scriptOrScripts as Command<string>];
-
-					for (const command of commands) {
-						if (Array.isArray(command) && typeof command[1] === "function") {
-							const [, argsFn] = command;
-							scriptsToRun.add(argsFn(matchingFiles));
-						} else {
-							scriptsToRun.add(`${command} ${matchingFiles.join(" ")}`);
-						}
-					}
-				}
-			}
-		}
-	} else {
-		// Unconditional execution for file-independent hooks
-		const commands: Command<string>[] = Array.isArray(hookConfig)
-			? (hookConfig as Command<string>[])
-			: [hookConfig as Command<string>];
-
-		for (const command of commands) {
-			if (Array.isArray(command) && typeof command[1] === "function") {
-				const [, argsFn] = command;
-				// Pass all staged files to unconditional hooks if needed
-				scriptsToRun.add(argsFn(stagedFiles ?? []));
-			} else {
-				// For simple strings, run them without arguments
-				scriptsToRun.add(String(command));
-			}
-		}
-	}
-
-	const finalScripts = Array.from(scriptsToRun);
+	const finalScripts = resolveScriptsToRun(hookConfig, stagedFiles);
 
 	if (finalScripts.length === 0) {
 		console.log(`ts-git-hooks: No scripts to run for ${hookName}.`);
@@ -126,17 +183,8 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 
 		// 2. Run the scripts
 		console.log(`ts-git-hooks: Running scripts for ${hookName}...`);
-		const results = await Promise.allSettled(
-			finalScripts.map((script) => executeScript(script)),
-		);
-
-		const failedScripts = results.filter(
-			(result) => result.status === "rejected",
-		);
-
-		if (failedScripts.length > 0) {
-			throw new Error(`\n${hookName} hook failed. At least one script failed.`);
-		}
+		// Use Promise.all to ensure that if any script fails, the entire hook fails.
+		await Promise.all(finalScripts.map((script) => executeScript(script)));
 
 		// 3. For pre-commit, stage any changes made by the scripts
 		if (hookName === "pre-commit") {
@@ -153,7 +201,8 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		console.error(
 			`\nts-git-hooks: An error occurred during the ${hookName} hook.`,
 		);
-		if (error instanceof Error) {
+		if (error instanceof Error && error.message) {
+			// Don't log the full error object, just the message for cleaner output.
 			console.error(error.message);
 		}
 		return false;

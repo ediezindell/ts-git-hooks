@@ -1,16 +1,22 @@
 import { loadConfig } from "../core/config";
-import type { Command, KebabCaseGitHook, Script } from "../types";
+import type {
+	CamelCaseGitHook,
+	Command,
+	HookConfig,
+	KebabCaseGitHook,
+} from "../types";
+import { camelToKebab } from "../utils/string";
 
-function scriptsToString<T extends string>(script: Script<T>): string {
+function scriptsToString<T extends string>(script: HookConfig<T>): string {
 	const formatCommand = (command: Command<T>): string => {
 		if (Array.isArray(command)) {
-			return command[0];
+			return String(command[0]);
 		}
-		return command;
+		return String(command);
 	};
 
 	if (Array.isArray(script)) {
-		// It could be Command<T>[] or a single Command<T> that is a tuple [T, ArgsFn]
+		// It could be Command<T>[] or a single Command<T> that is a tuple [string, ArgsFn]
 		if (script.length === 2 && typeof script[1] === "function") {
 			return (script as [T, (files: string[]) => string])[0];
 		}
@@ -30,7 +36,7 @@ export async function list() {
 		return;
 	}
 
-	const configuredHooks = Object.keys(config) as KebabCaseGitHook[];
+	const configuredHooks = Object.keys(config) as CamelCaseGitHook[];
 
 	if (configuredHooks.length === 0) {
 		console.log("No hooks configured.");
@@ -44,20 +50,22 @@ export async function list() {
 			continue;
 		}
 
+		const kebabCaseHookName = camelToKebab(hookName) as KebabCaseGitHook;
+
 		// Check if the hook config is for glob-based scripts (an object) or unconditional.
 		if (
 			typeof hookConfig === "object" &&
 			!Array.isArray(hookConfig) &&
 			hookConfig !== null
 		) {
-			console.log(`  - ${hookName}:`);
+			console.log(`  - ${kebabCaseHookName}:`);
 			for (const [glob, script] of Object.entries(hookConfig)) {
 				console.log(`    - ${glob}: ${scriptsToString(script)}`);
 			}
 		} else {
 			// Unconditional hook
 			const scripts = scriptsToString(hookConfig);
-			console.log(`  - ${hookName}: ${scripts}`);
+			console.log(`  - ${kebabCaseHookName}: ${scripts}`);
 		}
 	}
 }

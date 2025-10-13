@@ -1,7 +1,7 @@
 import path from "node:path";
 import jiti from "jiti";
-import type { GitHook, TSGitHookConfig } from "../types";
-import { toKebabCase } from "../utils/casing";
+import type { CamelCaseGitHook, TSGitHookConfig } from "../types";
+import { kebabToCamel } from "../utils/string";
 
 const configFileName = "ts-git-hooks.config.ts";
 
@@ -21,20 +21,17 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 		if (configModule?.config) {
 			const config = configModule.config as TSGitHookConfig;
 
-			// Normalize keys to kebab-case
+			// Normalize all hook names to camelCase for internal consistency.
 			const normalizedConfig: TSGitHookConfig = {};
 			const configKeys = Object.keys(config) as (keyof TSGitHookConfig)[];
 
 			for (const hookName of configKeys) {
-				if (hookName.includes("-")) {
-					console.warn(
-						`Warning: Hook name "${hookName}" in config should be in camelCase.`,
-					);
-				}
-				const kebabCaseHookName = toKebabCase(hookName);
-				const hookValue = config[hookName];
+				const hookValue = config[hookName as keyof typeof config];
 				if (hookValue) {
-					normalizedConfig[kebabCaseHookName] = hookValue as any;
+					const camelCaseHookName = kebabToCamel(
+						hookName,
+					) as CamelCaseGitHook;
+					normalizedConfig[camelCaseHookName] = hookValue as any;
 				}
 			}
 			return normalizedConfig;

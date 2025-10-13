@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { TSGitHookConfig } from "../types";
 import {
 	addFiles,
 	getChangedFiles,
@@ -55,7 +56,7 @@ describe("runHook", () => {
 	});
 
 	it("should return true if hook is not in config", async () => {
-		const mockConfig: TSGitHookConfig = { "pre-commit": { "*.ts": "lint" } };
+		const mockConfig: TSGitHookConfig = { preCommit: { "*.ts": "lint" } };
 		vi.mocked(loadConfig).mockResolvedValue(mockConfig);
 		const result = await runHook("pre-push");
 		expect(result).toBe(true);
@@ -69,10 +70,10 @@ describe("runHook", () => {
 
 	it("should handle mixed hook types correctly", async () => {
 		const mockConfig: TSGitHookConfig = {
-			"pre-commit": {
-				"*.js": "eslint",
+			preCommit: {
+				"*.js": ["eslint", (files) => `eslint ${files.join(" ")}`],
 			},
-			"pre-push": "test",
+			prePush: "test",
 		};
 		vi.mocked(loadConfig).mockResolvedValue(mockConfig);
 		vi.mocked(getStagedFiles).mockResolvedValue(["my-file.js"]);
@@ -110,7 +111,7 @@ describe("Glob-based (file-dependent) hook execution", () => {
 
 	it("should execute scripts for matching glob patterns and return true", async () => {
 		vi.mocked(loadConfig).mockResolvedValue({
-			"pre-commit": { "*.ts": "tsc", "*.md": "format" },
+			preCommit: { "*.ts": "tsc", "*.md": "format" },
 		});
 		vi.mocked(spawn).mockImplementation(() => {
 			const p = new MockChildProcess();
@@ -135,7 +136,7 @@ describe("Glob-based (file-dependent) hook execution", () => {
 
 	it("should return false if a glob-based script fails", async () => {
 		vi.mocked(loadConfig).mockResolvedValue({
-			"pre-commit": { "*.ts": "test" },
+			preCommit: { "*.ts": "test" },
 		});
 		vi.mocked(spawn).mockImplementationOnce(() => {
 			const p = new MockChildProcess();
@@ -158,7 +159,7 @@ describe("Unconditional (file-independent) hook execution", () => {
 	});
 
 	it("should execute a single script and return true", async () => {
-		vi.mocked(loadConfig).mockResolvedValue({ "pre-push": "test" });
+		vi.mocked(loadConfig).mockResolvedValue({ prePush: "test" });
 		vi.mocked(spawn).mockImplementationOnce(() => {
 			const p = new MockChildProcess();
 			simulateSuccess(p);
@@ -171,7 +172,7 @@ describe("Unconditional (file-independent) hook execution", () => {
 	});
 
 	it("should execute an array of scripts and return true", async () => {
-		vi.mocked(loadConfig).mockResolvedValue({ "pre-push": ["test", "build"] });
+		vi.mocked(loadConfig).mockResolvedValue({ prePush: ["test", "build"] });
 		vi.mocked(spawn).mockImplementation(() => {
 			const p = new MockChildProcess();
 			simulateSuccess(p);
@@ -185,7 +186,7 @@ describe("Unconditional (file-independent) hook execution", () => {
 	});
 
 	it("should return false if any script in an array fails", async () => {
-		vi.mocked(loadConfig).mockResolvedValue({ "pre-push": ["test", "build"] });
+		vi.mocked(loadConfig).mockResolvedValue({ prePush: ["test", "build"] });
 		vi.mocked(spawn)
 			.mockImplementationOnce(() => {
 				// test succeeds
@@ -209,7 +210,7 @@ describe("Auto-Fixing and Stashing", () => {
 	beforeEach(() => {
 		setupDefaultMocks();
 		vi.mocked(loadConfig).mockResolvedValue({
-			"pre-commit": { "*.ts": "format" },
+			preCommit: { "*.ts": "format" },
 		});
 		vi.mocked(getStagedFiles).mockResolvedValue(["src/file.ts"]);
 		vi.mocked(spawn).mockImplementation(() => {

@@ -1,7 +1,8 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../core/config";
-import type { KebabCaseGitHook } from "../types";
+import type { CamelCaseGitHook, KebabCaseGitHook } from "../types";
+import { camelToKebab } from "../utils/string";
 
 const gitHooksDir = path.join(process.cwd(), ".git", "hooks");
 
@@ -34,13 +35,14 @@ export async function install() {
 		await fs.mkdir(gitHooksDir, { recursive: true });
 
 		const installedHooks: KebabCaseGitHook[] = [];
-		const hookNames = Object.keys(config) as KebabCaseGitHook[];
+		const hookNames = Object.keys(config) as CamelCaseGitHook[];
 
 		for (const hookName of hookNames) {
 			if (!config[hookName]) continue;
 
-			const hookPath = path.join(gitHooksDir, hookName);
-			const scriptContent = hookScriptContent(hookName);
+			const kebabCaseHookName = camelToKebab(hookName) as KebabCaseGitHook;
+			const hookPath = path.join(gitHooksDir, kebabCaseHookName);
+			const scriptContent = hookScriptContent(kebabCaseHookName);
 
 			// 2. Write the hook script file.
 			await fs.writeFile(hookPath, scriptContent, "utf-8");
@@ -48,7 +50,7 @@ export async function install() {
 			// 3. Make the hook script executable.
 			await fs.chmod(hookPath, 0o755);
 
-			installedHooks.push(hookName);
+			installedHooks.push(kebabCaseHookName);
 		}
 
 		if (installedHooks.length > 0) {

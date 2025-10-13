@@ -27,7 +27,7 @@ export type GitHook = KebabCaseGitHook | CamelCaseGitHook;
 /**
  * A function that takes a list of file paths and returns a command string.
  */
-export type ArgsFn = (files: string[]) => string;
+export type ArgsFn = (files: string[], script: string) => string;
 
 /**
  * A command to be executed, either a script name or a tuple of [script, argsFn].
@@ -84,3 +84,11 @@ export type TSGitHookConfig<T extends string = string> = Partial<{
 		? GlobHookConfig<T>
 		: SimpleHookConfig<T>;
 }>;
+
+/**
+ * Represents the configuration for a single git hook, which can be either
+ * glob-based or a simple script configuration.
+ */
+export type HookConfig<T extends string = string> =
+	| GlobHookConfig<T>
+	| SimpleHookConfig<T>;
