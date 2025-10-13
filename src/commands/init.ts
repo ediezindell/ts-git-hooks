@@ -11,7 +11,7 @@ import pkg from './package.json' with { type: 'json' };
 // You can remove it if you don't want to run it on every commit.
 export const config: TSGitHookConfig<keyof typeof pkg.scripts> = {
   'pre-commit': {
-    '*.{js,ts,jsx,tsx}': 'lint',
+    '*.{js,ts,jsx,tsx}': ['lint', 'test'],
     '*.{md,json}': 'format',
   },
   'pre-push': {

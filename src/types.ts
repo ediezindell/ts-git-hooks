@@ -16,9 +16,27 @@ export type GitHook =
 	| "post-receive";
 
 /**
+ * A function that takes a list of file paths and returns a command string.
+ */
+export type ArgsFn = (files: string[]) => string;
+
+/**
+ * Represents a command to be executed. It can be a simple string (script name)
+ * or a tuple containing the script name and a function to generate arguments.
+ * The type parameter `T` is expected to be a union of available script names.
+ */
+export type Command<T extends string> = T | [T, ArgsFn];
+
+/**
+ * Represents a single script or an array of scripts to be run.
+ * The type parameter `T` is expected to be a union of available script names.
+ */
+export type Script<T extends string> = Command<T> | Command<T>[];
+
+/**
  * The configuration for a single git hook.
- * This is a mapping of glob patterns to a single script command.
- * A special `*` key can be used to execute a script unconditionally.
+ * This can be a mapping of glob patterns to scripts.
+ * A special `*` key can be used to execute scripts unconditionally.
  *
  * The type parameter `T` is expected to be a union of available script names.
  *
@@ -26,16 +44,16 @@ export type GitHook =
  * // Glob-based configuration
  * {
  *   '*.ts': 'tsc',
- *   '*.{js,ts}': 'eslint --fix'
+ *   '*.{js,ts}': ['eslint --fix', 'prettier --write']
  * }
  *
  * @example
- * // Unconditional script
+ * // Simple configuration
  * {
- *   '*': 'test'
+ *   '*': ['test', 'lint']
  * }
  */
-export type HookConfig<T extends string> = Record<string, T>;
+export type HookConfig<T extends string> = Record<string, Script<T>>;
 
 /**
  * The main configuration type for `ts-git-hooks`.

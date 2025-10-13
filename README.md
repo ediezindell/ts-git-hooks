@@ -25,11 +25,10 @@ import { TSGitHookConfig } from "ts-git-hooks";
 
 export const config: TSGitHookConfig = {
   'pre-commit': {
-    '*.ts': 'lint',
-    '*.json': 'format'
+    '*': ['lint', 'format']
   },
   'pre-push': {
-    '*': 'test'
+    '*': ['test', 'typecheck']
   }
 }
 ```
@@ -53,13 +52,13 @@ import { TSGitHookConfig } from "ts-git-hooks";
 
 export const config: TSGitHookConfig = {
   'pre-commit': {
-    '*.ts': 'lint'
+    '*': 'lint'  // Single script
   },
   'commit-msg': {
-    '*': 'commitlint'
+    '*': ['commitlint']  // Array for multiple scripts
   },
   'pre-push': {
-    '*': 'test'
+    '*': ['test', 'build']  // Runs in parallel
   }
 }
 ```
@@ -74,14 +73,14 @@ import { TSGitHookConfig } from "ts-git-hooks";
 // ✅ TypeScript will autocomplete available scripts
 export const config: TSGitHookConfig = {
   'pre-commit': {
-    '*.ts': 'lint'  // IDE autocomplete works!
+    '*': ['lint', 'format']  // IDE autocomplete works!
   }
 }
 
 // ❌ TypeScript error if script doesn't exist
 export const config: TSGitHookConfig = {
   'pre-commit': {
-    '*.ts': 'nonexistent'  // Error: "nonexistent" is not in package.json
+    '*': ['nonexistent']  // Error: "nonexistent" is not in package.json
   }
 }
 ```
@@ -127,6 +126,7 @@ Shows all configured hooks and their scripts.
 
 ## How It Works
 
+- Scripts run in **parallel** by default for speed
 - All scripts must succeed for the hook to pass
 - If any script fails, the hook fails and git operation is aborted
 
@@ -137,11 +137,10 @@ import { TSGitHookConfig } from "ts-git-hooks";
 
 export const config: TSGitHookConfig = {
   'pre-commit': {
-    '*.ts': 'lint',
-    '*.{css,md}': 'format'
+    '*': ['lint', 'format', 'typecheck']
   },
   'pre-push': {
-    '*': 'test'
+    '*': ['test']
   }
 }
 ```
@@ -151,16 +150,16 @@ export const config: TSGitHookConfig = {
   "scripts": {
     "lint": "eslint .",
     "format": "prettier --check .",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run"
   }
 }
 ```
 
 Now when you commit:
-1. If you have any staged `.ts` files, `lint` will run.
-2. If you have any staged `.css` or `.md` files, `format` will run.
-3. If all scripts pass, commit succeeds.
-4. If any script fails, commit is aborted.
+1. `lint`, `format`, and `typecheck` run in parallel
+2. If all pass, commit succeeds
+3. If any fail, commit is aborted
 
 ## FAQ
 
