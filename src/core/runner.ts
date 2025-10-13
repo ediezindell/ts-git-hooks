@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import micromatch from "micromatch";
-import type { Command, GitHook } from "../types";
+import type { Command, KebabCaseGitHook } from "../types";
 import {
 	addFiles,
 	getChangedFiles,
@@ -42,7 +42,7 @@ function executeScript(script: string): Promise<void> {
  * @param hookName The name of the git hook being triggered.
  * @returns A promise that resolves to `true` if the hook succeeds, `false` otherwise.
  */
-export async function runHook(hookName: GitHook): Promise<boolean> {
+export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	const config = await loadConfig();
 
 	if (!config) {

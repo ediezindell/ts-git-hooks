@@ -1,5 +1,5 @@
 import { loadConfig } from "../core/config";
-import type { Command, GitHook, Script } from "../types";
+import type { Command, KebabCaseGitHook, Script } from "../types";
 
 function scriptsToString<T extends string>(script: Script<T>): string {
 	const formatCommand = (command: Command<T>): string => {
@@ -30,7 +30,7 @@ export async function list() {
 		return;
 	}
 
-	const configuredHooks = Object.keys(config) as GitHook[];
+	const configuredHooks = Object.keys(config) as KebabCaseGitHook[];
 
 	if (configuredHooks.length === 0) {
 		console.log("No hooks configured.");
