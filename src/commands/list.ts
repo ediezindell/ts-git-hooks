@@ -44,14 +44,20 @@ export async function list() {
 			continue;
 		}
 
-		if ("run" in hookConfig) {
-			const scripts = scriptsToString(hookConfig.run);
-			console.log(`  - ${hookName}: ${scripts}`);
-		} else {
+		// Check if the hook config is for glob-based scripts (an object) or unconditional.
+		if (
+			typeof hookConfig === "object" &&
+			!Array.isArray(hookConfig) &&
+			hookConfig !== null
+		) {
 			console.log(`  - ${hookName}:`);
 			for (const [glob, script] of Object.entries(hookConfig)) {
 				console.log(`    - ${glob}: ${scriptsToString(script)}`);
 			}
+		} else {
+			// Unconditional hook
+			const scripts = scriptsToString(hookConfig);
+			console.log(`  - ${hookName}: ${scripts}`);
 		}
 	}
 }

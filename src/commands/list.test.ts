@@ -16,11 +16,11 @@ describe("list command", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("should list all configured hooks and their scripts", async () => {
+	it("should list unconditional hooks (string and array)", async () => {
 		// Arrange
 		vi.mocked(loadConfig).mockResolvedValue({
-			"pre-commit": { run: "lint" },
-			"pre-push": { run: ["test", "build"] },
+			"pre-push": "test",
+			"post-merge": ["build", "notify"],
 		});
 
 		// Act
@@ -28,10 +28,10 @@ describe("list command", () => {
 
 		// Assert
 		expect(logSpy).toHaveBeenCalledWith("Configured git hooks:");
-		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("pre-commit"));
-		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("lint"));
-		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("pre-push"));
-		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("test, build"));
+		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("pre-push: test"));
+		expect(logSpy).toHaveBeenCalledWith(
+			expect.stringContaining("post-merge: build, notify"),
+		);
 	});
 
 	it("should correctly list glob-based configurations", async () => {
@@ -41,9 +41,6 @@ describe("list command", () => {
 				"*.{js,ts}": "lint",
 				"*.css": ["stylelint"],
 			},
-			"pre-push": {
-				run: "test",
-			},
 		});
 
 		// Act
@@ -51,13 +48,13 @@ describe("list command", () => {
 
 		// Assert
 		expect(logSpy).toHaveBeenCalledWith("Configured git hooks:");
-		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("pre-commit"));
-		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("pre-push"));
-		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("test"));
-		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("*.{js,ts}"));
-		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("lint"));
-		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("*.css"));
-		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("stylelint"));
+		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("pre-commit:"));
+		expect(logSpy).toHaveBeenCalledWith(
+			expect.stringContaining("*.{js,ts}: lint"),
+		);
+		expect(logSpy).toHaveBeenCalledWith(
+			expect.stringContaining("*.css: stylelint"),
+		);
 	});
 
 	it("should display a message if no hooks are configured", async () => {

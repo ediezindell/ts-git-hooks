@@ -59,40 +59,51 @@ export async function runHook(hookName: GitHook): Promise<boolean> {
 	const scriptsToRun = new Set<string>();
 	const stagedFiles = await getStagedFiles();
 
-	// Handle glob-based scripts
-	for (const [globPattern, scriptOrScripts] of Object.entries(hookConfig)) {
-		const matchingFiles =
-			stagedFiles && stagedFiles.length > 0
-				? micromatch(stagedFiles, globPattern, {
-						matchBase: true, // Allows patterns like *.js to match files in subdirectories
-					})
-				: [];
+	// Check if the hook config is for glob-based scripts (an object) or unconditional.
+	if (
+		typeof hookConfig === "object" &&
+		!Array.isArray(hookConfig) &&
+		hookConfig !== null
+	) {
+		// Glob-based execution for file-dependent hooks
+		if (stagedFiles && stagedFiles.length > 0) {
+			for (const [globPattern, scriptOrScripts] of Object.entries(
+				hookConfig,
+			)) {
+				const matchingFiles = micromatch(stagedFiles, globPattern, {
+					matchBase: true,
+				});
 
-		if (matchingFiles.length > 0 || globPattern === "*") {
-			const isCommandTuple =
-				Array.isArray(scriptOrScripts) &&
-				typeof scriptOrScripts[1] === "function";
+				if (matchingFiles.length > 0) {
+					const commands: Command<string>[] = Array.isArray(scriptOrScripts)
+						? (scriptOrScripts as Command<string>[])
+						: [scriptOrScripts as Command<string>];
 
-			const commands: Command<string>[] = isCommandTuple
-				? [scriptOrScripts as Command<string>]
-				: Array.isArray(scriptOrScripts)
-					? (scriptOrScripts as Command<string>[])
-					: [scriptOrScripts as Command<string>];
-
-			for (const command of commands) {
-				// A command is a tuple if it's an array and its second element is a function.
-				if (Array.isArray(command) && typeof command[1] === "function") {
-					const [, argsFn] = command;
-					scriptsToRun.add(argsFn(matchingFiles));
-				} else {
-					// It's a string. For `*`, we pass staged files as the default.
-					const files = globPattern === "*" ? stagedFiles ?? [] : matchingFiles;
-					scriptsToRun.add(
-						files.length > 0
-							? `${command} ${files.join(" ")}`
-							: String(command),
-					);
+					for (const command of commands) {
+						if (Array.isArray(command) && typeof command[1] === "function") {
+							const [, argsFn] = command;
+							scriptsToRun.add(argsFn(matchingFiles));
+						} else {
+							scriptsToRun.add(`${command} ${matchingFiles.join(" ")}`);
+						}
+					}
 				}
+			}
+		}
+	} else {
+		// Unconditional execution for file-independent hooks
+		const commands: Command<string>[] = Array.isArray(hookConfig)
+			? (hookConfig as Command<string>[])
+			: [hookConfig as Command<string>];
+
+		for (const command of commands) {
+			if (Array.isArray(command) && typeof command[1] === "function") {
+				const [, argsFn] = command;
+				// Pass all staged files to unconditional hooks if needed
+				scriptsToRun.add(argsFn(stagedFiles ?? []));
+			} else {
+				// For simple strings, run them without arguments
+				scriptsToRun.add(String(command));
 			}
 		}
 	}
