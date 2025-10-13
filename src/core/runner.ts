@@ -158,11 +158,11 @@ export async function runHook(hookName: GitHook): Promise<boolean> {
 
 		console.log(`\nts-git-hooks: ${hookName} hook passed.`);
 		return true;
-	} catch (error: any) {
+	} catch (error: unknown) {
 		console.error(
 			`\nts-git-hooks: An error occurred during the ${hookName} hook.`,
 		);
-		if (error?.message) {
+		if (error instanceof Error) {
 			console.error(error.message);
 		}
 		return false;

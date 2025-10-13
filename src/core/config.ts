@@ -22,9 +22,9 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 		}
 
 		return null;
-	} catch (error: any) {
+	} catch (error: unknown) {
 		// Jiti throws an error if the file doesn't exist, which is expected.
-		if (error.code === "MODULE_NOT_FOUND") {
+		if ((error as any)?.code === "MODULE_NOT_FOUND") {
 			return null;
 		}
 		// For other errors, log them as they might be syntax errors in the config.

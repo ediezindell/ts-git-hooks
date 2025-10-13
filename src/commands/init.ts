@@ -7,13 +7,15 @@ const defaultConfigContent = `\
 import type { TSGitHookConfig } from 'ts-git-hooks';
 import pkg from './package.json' with { type: 'json' };
 
+// Note: "build" script is added to "pre-commit" by default.
+// You can remove it if you don't want to run it on every commit.
 export const config: TSGitHookConfig<keyof typeof pkg.scripts> = {
   'pre-commit': {
-    '*.{js,ts,jsx,tsx}': ['lint', 'format'],
+    '*.{js,ts,jsx,tsx}': ['lint', 'test'],
     '*.{md,json}': 'format',
   },
   'pre-push': {
-    run: 'test',
+    run: 'build',
   },
 };
 `;
