@@ -22,9 +22,7 @@ export const config: TSGitHookConfig<keyof typeof pkg.scripts> = {
     '*.{js,ts,jsx,tsx}': ['lint', 'test'],
     '*.{md,json}': 'format',
   },
-  'pre-push': {
-    run: 'build',
-  },
+  'pre-push': 'build',
 };
 `;
 

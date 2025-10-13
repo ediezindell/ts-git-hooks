@@ -34,27 +34,28 @@ export type Command<T extends string> = T | [T, ArgsFn];
 export type Script<T extends string> = Command<T> | Command<T>[];
 
 /**
- * The configuration for a single git hook.
- * This can be a mapping of glob patterns to scripts.
- * For backward compatibility, a `run` key can be used to execute scripts
- * unconditionally.
+ * The configuration for a single git hook. It can be one of two formats:
+ *
+ * 1.  **Glob-based (for file-dependent hooks like `pre-commit`):**
+ *     An object where keys are glob patterns and values are the scripts to run.
+ *
+ * 2.  **Unconditional (for file-independent hooks like `pre-push`):**
+ *     A script string or an array of script strings to be executed unconditionally.
  *
  * The type parameter `T` is expected to be a union of available script names.
  *
  * @example
- * // Glob-based configuration
+ * // Glob-based configuration for `pre-commit`
  * {
  *   '*.ts': 'tsc',
  *   '*.{js,ts}': ['eslint --fix', 'prettier --write']
  * }
  *
  * @example
- * // Simple configuration (backward compatible)
- * {
- *   run: ['test', 'lint']
- * }
+ * // Unconditional configuration for `pre-push`
+ * 'test' // or ['test', 'build']
  */
-export type HookConfig<T extends string> = Record<string, Script<T>>;
+export type HookConfig<T extends string> = Record<string, Script<T>> | Script<T>;
 
 /**
  * The main configuration type for `ts-git-hooks`.
@@ -68,12 +69,12 @@ export type HookConfig<T extends string> = Record<string, Script<T>>;
  * type Scripts = keyof typeof pkg.scripts;
  *
  * export const config: TSGitHookConfig<Scripts> = {
+ *   // Glob-based for file-dependent hooks
  *   'pre-commit': {
  *     '*.ts': 'test'
  *   },
- *   'pre-push': {
- *      run: 'build'
- *   }
+ *   // Direct script for file-independent hooks
+ *   'pre-push': 'build'
  * };
  */
 export type TSGitHookConfig<T extends string = string> = Partial<
