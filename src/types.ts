@@ -27,8 +27,9 @@ export type Script<T extends string> = Command<T> | Command<T>[];
 
 /**
  * Hooks that run scripts against a list of files, configured with glob patterns.
+ * This is a subset of `GitHook`.
  */
-export type FileDependentHook = "pre-commit";
+export type FileDependentHook = Extract<GitHook, "pre-commit">;
 
 /**
  * Hooks that run scripts unconditionally, not against specific files.
