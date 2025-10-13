@@ -10,6 +10,7 @@ vi.mock('node:fs', () => ({
     mkdir: vi.fn(),
     writeFile: vi.fn(),
     chmod: vi.fn(),
+    readFile: vi.fn(),
     access: vi.fn().mockRejectedValue(new Error('File not found')), // Default to not found
   },
 }));
@@ -24,11 +25,30 @@ describe('install command', () => {
       'pre-commit': { run: ['lint'] },
       'pre-push': { run: ['test'] },
     });
+    const pkg = { scripts: { lint: 'eslint .', test: 'vitest' } };
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(pkg));
     vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('should throw an error for invalid scripts in config', async () => {
+    // Arrange
+    vi.mocked(loadConfig).mockResolvedValue({
+      'pre-commit': { run: ['lint', 'invalid-script'] },
+    });
+
+    // Act
+    await install();
+
+    // Assert
+    expect(console.error).toHaveBeenCalledWith(
+      'Failed to install git hooks:',
+      new Error('Invalid scripts found in config: invalid-script')
+    );
   });
 
   it('should create .git/hooks directory if it does not exist', async () => {

@@ -5,23 +5,17 @@ const configFileName = 'ts-git-hooks.config.ts';
 
 const defaultConfigContent = `\
 import type { TSGitHookConfig } from 'ts-git-hooks';
+import pkg from './package.json' with { type: 'json' };
 
-/**
- * @see https://github.com/ediezindell/ts-git-hooks#type-safety
- *
- * To get full type-safety, you can pass your package.json scripts as a generic.
- *
- * @example
- * import pkg from './package.json'; // Make sure resolveJsonModule is true in tsconfig
- * type Scripts = keyof typeof pkg.scripts;
- * export const config: TSGitHookConfig<Scripts> = { ... };
- */
-export const config: TSGitHookConfig = {
+// Note: "build" script is added to "pre-commit" by default.
+// You can remove it if you don't want to run it on every commit.
+export const config: TSGitHookConfig<keyof typeof pkg.scripts> = {
   'pre-commit': {
-    run: ['npm test'],
+    '*.{js,ts,jsx,tsx}': ['lint', 'test'],
+    '*.{md,json}': 'format',
   },
   'pre-push': {
-    run: [],
+    run: 'build',
   },
 };
 `;
