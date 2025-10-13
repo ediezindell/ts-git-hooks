@@ -10,19 +10,15 @@ TypeScript-first git hooks manager with type-safe configuration.
 
 ## Core Concepts
 
-This tool is designed around a few core principles to provide an intuitive and powerful experience.
+`ts-git-hooks` is built on a few key principles to make managing your git hooks simple and robust.
 
-1.  **Configuration Reflects Intent**: The structure of your configuration changes based on the hook's purpose, eliminating the need for special keys and making your setup declarative.
-    -   **File-dependent hooks** (e.g., `pre-commit`): Use an object with glob patterns as keys (`{ "*.ts": "lint" }`). Scripts run only against staged files that match their pattern.
-    -   **File-independent hooks** (e.g., `pre-push`): Use a direct script string or an array of scripts (`"test"` or `["test", "build"]`). These run unconditionally for the Git event.
+1.  **Type-Safe Scripts:** Leverage TypeScript to get full autocompletion and compile-time validation for your npm script names right from your `package.json`. No more typos or guesswork.
 
-2.  **Type-Safety First**: By using the `TSGitHookConfig<keyof typeof pkg.scripts>` generic, you get full auto-completion and compile-time validation of your script names against your `package.json`, preventing common typos.
+2.  **Glob-based Targeting:** Use glob patterns to precisely control which scripts run on which files. A script for `'*.ts'` will only run against staged TypeScript files, and a script for `'*.css'` will only run against staged CSS files.
 
-3.  **Parallel by Default**: When you provide an array of scripts, they are executed in parallel to maximize speed. For sequential execution, create a single compound script in your `package.json` (e.g., `"lint-then-test": "npm run lint && npm run test"`).
+3.  **Flexible Argument Handling:** Scripts automatically receive the list of matching files as arguments. For more complex needs, you can provide a function to format the arguments exactly as your script requires.
 
-4.  **Smart Argument Handling**:
-    -   In **glob-based** configs, the corresponding script automatically receives the list of matching staged files as arguments.
-    -   In **direct script** configs, scripts are run without file arguments by default, as they are not tied to specific file changes.
+4.  **Optimized for npm:** The entire workflow is designed to integrate seamlessly with your existing npm scripts, acting as a powerful, type-safe orchestrator for the tools you already use.
 
 ## Installation
 
