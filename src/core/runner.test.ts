@@ -55,7 +55,8 @@ describe("runHook", () => {
 	});
 
 	it("should return true if hook is not in config", async () => {
-		vi.mocked(loadConfig).mockResolvedValue({ "pre-commit": { "*.ts": "lint" } });
+		const mockConfig: TSGitHookConfig = { "pre-commit": { "*.ts": "lint" } };
+		vi.mocked(loadConfig).mockResolvedValue(mockConfig);
 		const result = await runHook("pre-push");
 		expect(result).toBe(true);
 	});
@@ -64,6 +65,36 @@ describe("runHook", () => {
 		vi.mocked(loadConfig).mockResolvedValue(null);
 		const result = await runHook("pre-commit");
 		expect(result).toBe(false);
+	});
+
+	it("should handle mixed hook types correctly", async () => {
+		const mockConfig: TSGitHookConfig = {
+			"pre-commit": {
+				"*.js": "eslint",
+			},
+			"pre-push": "test",
+		};
+		vi.mocked(loadConfig).mockResolvedValue(mockConfig);
+		vi.mocked(getStagedFiles).mockResolvedValue(["my-file.js"]);
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		// Test pre-commit
+		const preCommitResult = await runHook("pre-commit");
+		expect(spawn).toHaveBeenCalledWith(
+			"npm",
+			["run", "eslint my-file.js"],
+			expect.any(Object),
+		);
+		expect(preCommitResult).toBe(true);
+
+		// Test pre-push
+		const prePushResult = await runHook("pre-push");
+		expect(spawn).toHaveBeenCalledWith("npm", ["run", "test"], expect.any(Object));
+		expect(prePushResult).toBe(true);
 	});
 });
 

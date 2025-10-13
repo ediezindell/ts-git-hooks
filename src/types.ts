@@ -34,33 +34,47 @@ export type Command<T extends string> = T | [T, ArgsFn];
 export type Script<T extends string> = Command<T> | Command<T>[];
 
 /**
- * The configuration for a single git hook. It can be one of two formats:
- *
- * 1.  **Glob-based (for file-dependent hooks like `pre-commit`):**
- *     An object where keys are glob patterns and values are the scripts to run.
- *
- * 2.  **Unconditional (for file-independent hooks like `pre-push`):**
- *     A script string or an array of script strings to be executed unconditionally.
- *
+ * A list of git hooks that are file-dependent and expect a glob pattern configuration.
+ * Currently, only `pre-commit` is supported as a file-dependent hook.
+ */
+export type FileDependentHook = "pre-commit";
+
+/**
+ * A list of git hooks that are not file-dependent and expect a simple script configuration.
+ */
+export type FileIndependentHook = Exclude<GitHook, FileDependentHook>;
+
+/**
+ * Configuration for file-dependent hooks like `pre-commit`.
+ * It's an object where keys are glob patterns and values are the scripts to run.
  * The type parameter `T` is expected to be a union of available script names.
  *
  * @example
- * // Glob-based configuration for `pre-commit`
  * {
  *   '*.ts': 'tsc',
  *   '*.{js,ts}': ['eslint --fix', 'prettier --write']
  * }
+ */
+export type GlobHookConfig<T extends string> = Record<string, Script<T>>;
+
+/**
+ * Configuration for file-independent hooks like `pre-push`.
+ * It's a script string or an array of script strings to be executed unconditionally.
+ * The type parameter `T` is expected to be a union of available script names.
  *
  * @example
- * // Unconditional configuration for `pre-push`
  * 'test' // or ['test', 'build']
  */
-export type HookConfig<T extends string> = Record<string, Script<T>> | Script<T>;
+export type SimpleHookConfig<T extends string> = Script<T>;
 
 /**
  * The main configuration type for `ts-git-hooks`.
- * This type is generic. To get full type-safety, users should provide
- * their package.json script names as the type parameter.
+ * This type is generic and provides full type-safety by ensuring that:
+ * - `pre-commit` hooks use a glob-based configuration.
+ * - All other hooks use a simple script or script array.
+ *
+ * To get full type-safety with your project's scripts, provide the script
+ * names from your `package.json` as the type parameter.
  *
  * @example
  * import type { TSGitHookConfig } from 'ts-git-hooks';
@@ -69,14 +83,16 @@ export type HookConfig<T extends string> = Record<string, Script<T>> | Script<T>
  * type Scripts = keyof typeof pkg.scripts;
  *
  * export const config: TSGitHookConfig<Scripts> = {
- *   // Glob-based for file-dependent hooks
+ *   // Glob-based for the file-dependent 'pre-commit' hook
  *   'pre-commit': {
  *     '*.ts': 'test'
  *   },
- *   // Direct script for file-independent hooks
+ *   // Direct script for the file-independent 'pre-push' hook
  *   'pre-push': 'build'
  * };
  */
-export type TSGitHookConfig<T extends string = string> = Partial<
-	Record<GitHook, HookConfig<T>>
->;
+export type TSGitHookConfig<T extends string = string> = Partial<{
+	[K in GitHook]: K extends FileDependentHook
+		? GlobHookConfig<T>
+		: SimpleHookConfig<T>;
+}>;
