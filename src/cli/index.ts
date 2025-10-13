@@ -6,6 +6,7 @@ import { list } from "../commands/list.js";
 import { uninstall } from "../commands/uninstall.js";
 import { runHook } from "../core/runner.js";
 import type { GitHook } from "../types.js";
+import { toKebabCase } from "../utils/casing.js";
 
 export async function main() {
 	const command = process.argv[2];
@@ -35,7 +36,7 @@ export async function main() {
 				console.error("Example: ts-git-hooks run pre-commit");
 				process.exit(1);
 			}
-			const success = await runHook(hookName);
+			const success = await runHook(toKebabCase(hookName));
 			if (!success) {
 				process.exit(1);
 			}

@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../core/config";
-import type { GitHook } from "../types";
+import type { KebabCaseGitHook } from "../types";
 
 const gitHooksDir = path.join(process.cwd(), ".git", "hooks");
 const hookIdentifier = "# This hook was installed by ts-git-hooks";
@@ -23,14 +23,16 @@ async function fileExists(filePath: string): Promise<boolean> {
  */
 export async function uninstall() {
 	const config = await loadConfig();
-	const configuredHooks = config ? (Object.keys(config) as GitHook[]) : [];
+	const configuredHooks = config
+		? (Object.keys(config) as KebabCaseGitHook[])
+		: [];
 
 	if (configuredHooks.length === 0) {
 		console.log("No hooks configured. Nothing to uninstall.");
 		return;
 	}
 
-	const removedHooks: GitHook[] = [];
+	const removedHooks: KebabCaseGitHook[] = [];
 
 	for (const hookName of configuredHooks) {
 		const hookPath = path.join(gitHooksDir, hookName);

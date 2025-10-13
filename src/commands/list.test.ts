@@ -16,7 +16,7 @@ describe("list command", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("should list unconditional hooks (string and array)", async () => {
+	it("should list unconditional hooks (string and array) and handle camelCase", async () => {
 		// Arrange
 		vi.mocked(loadConfig).mockResolvedValue({
 			"pre-push": "test",

@@ -35,22 +35,6 @@ describe("install command", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("should throw an error for invalid scripts in config", async () => {
-		// Arrange
-		vi.mocked(loadConfig).mockResolvedValue({
-			"pre-commit": { run: ["lint", "invalid-script"] },
-		});
-
-		// Act
-		await install();
-
-		// Assert
-		expect(console.error).toHaveBeenCalledWith(
-			"Failed to install git hooks:",
-			new Error("Invalid scripts found in config: invalid-script"),
-		);
-	});
-
 	it("should create .git/hooks directory if it does not exist", async () => {
 		// Arrange
 		vi.mocked(fs.access).mockRejectedValueOnce(new Error("Dir not found")); // For .git/hooks

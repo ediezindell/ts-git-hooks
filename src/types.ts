@@ -1,4 +1,4 @@
-export type GitHook =
+export type KebabCaseGitHook =
 	| "pre-commit"
 	| "prepare-commit-msg"
 	| "commit-msg"
@@ -9,6 +9,20 @@ export type GitHook =
 	| "post-merge"
 	| "pre-push"
 	| "pre-auto-gc";
+
+export type CamelCaseGitHook =
+	| "preCommit"
+	| "prepareCommitMsg"
+	| "commitMsg"
+	| "postCommit"
+	| "preRebase"
+	| "postRewrite"
+	| "postCheckout"
+	| "postMerge"
+	| "prePush"
+	| "preAutoGc";
+
+export type GitHook = KebabCaseGitHook | CamelCaseGitHook;
 
 /**
  * A function that takes a list of file paths and returns a command string.
@@ -29,12 +43,12 @@ export type Script<T extends string> = Command<T> | Command<T>[];
  * Hooks that run scripts against a list of files, configured with glob patterns.
  * This is a subset of `GitHook`.
  */
-export type FileDependentHook = Extract<GitHook, "pre-commit">;
+export type FileDependentHook = Extract<KebabCaseGitHook, "pre-commit">;
 
 /**
  * Hooks that run scripts unconditionally, not against specific files.
  */
-export type FileIndependentHook = Exclude<GitHook, FileDependentHook>;
+export type FileIndependentHook = Exclude<KebabCaseGitHook, FileDependentHook>;
 
 /**
  * Configuration for file-dependent hooks (e.g., `pre-commit`).
@@ -66,7 +80,7 @@ export type SimpleHookConfig<T extends string> = Script<T>;
  * };
  */
 export type TSGitHookConfig<T extends string = string> = Partial<{
-	[K in GitHook]: K extends FileDependentHook
+	[K in CamelCaseGitHook]: K extends "preCommit"
 		? GlobHookConfig<T>
 		: SimpleHookConfig<T>;
 }>;
