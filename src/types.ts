@@ -1,5 +1,4 @@
 export type GitHook =
-	// Client-Side Hooks
 	| "pre-commit"
 	| "prepare-commit-msg"
 	| "commit-msg"
@@ -9,11 +8,7 @@ export type GitHook =
 	| "post-checkout"
 	| "post-merge"
 	| "pre-push"
-	| "pre-auto-gc"
-	// Server-Side Hooks
-	| "pre-receive"
-	| "update"
-	| "post-receive";
+	| "pre-auto-gc";
 
 /**
  * A function that takes a list of file paths and returns a command string.
@@ -21,62 +16,57 @@ export type GitHook =
 export type ArgsFn = (files: string[]) => string;
 
 /**
- * Represents a command to be executed. It can be a simple string (script name)
- * or a tuple containing the script name and a function to generate arguments.
- * The type parameter `T` is expected to be a union of available script names.
+ * A command to be executed, either a script name or a tuple of [script, argsFn].
  */
 export type Command<T extends string> = T | [T, ArgsFn];
 
 /**
- * Represents a single script or an array of scripts to be run.
- * The type parameter `T` is expected to be a union of available script names.
+ * A single script or an array of scripts.
  */
 export type Script<T extends string> = Command<T> | Command<T>[];
 
 /**
- * The configuration for a single git hook. It can be one of two formats:
- *
- * 1.  **Glob-based (for file-dependent hooks like `pre-commit`):**
- *     An object where keys are glob patterns and values are the scripts to run.
- *
- * 2.  **Unconditional (for file-independent hooks like `pre-push`):**
- *     A script string or an array of script strings to be executed unconditionally.
- *
- * The type parameter `T` is expected to be a union of available script names.
- *
- * @example
- * // Glob-based configuration for `pre-commit`
- * {
- *   '*.ts': 'tsc',
- *   '*.{js,ts}': ['eslint --fix', 'prettier --write']
- * }
- *
- * @example
- * // Unconditional configuration for `pre-push`
- * 'test' // or ['test', 'build']
+ * Hooks that run scripts against a list of files, configured with glob patterns.
+ * This is a subset of `GitHook`.
  */
-export type HookConfig<T extends string> = Record<string, Script<T>> | Script<T>;
+export type FileDependentHook = Extract<GitHook, "pre-commit">;
 
 /**
- * The main configuration type for `ts-git-hooks`.
- * This type is generic. To get full type-safety, users should provide
- * their package.json script names as the type parameter.
+ * Hooks that run scripts unconditionally, not against specific files.
+ */
+export type FileIndependentHook = Exclude<GitHook, FileDependentHook>;
+
+/**
+ * Configuration for file-dependent hooks (e.g., `pre-commit`).
+ * Maps glob patterns to scripts.
+ * @example { '*.ts': 'tsc' }
+ */
+export type GlobHookConfig<T extends string> = Record<string, Script<T>>;
+
+/**
+ * Configuration for file-independent hooks (e.g., `pre-push`).
+ * A single script or an array of scripts.
+ * @example 'test' or ['test', 'build']
+ */
+export type SimpleHookConfig<T extends string> = Script<T>;
+
+/**
+ * Defines the configuration structure for `ts-git-hooks`.
+ * It ensures that hooks are configured correctly based on their type.
  *
+ * - `pre-commit` uses a glob-based configuration.
+ * - All other hooks use a simple script or script array.
+ *
+ * Pass your `package.json` script names as a generic for full type-safety.
  * @example
- * import type { TSGitHookConfig } from 'ts-git-hooks';
- * import pkg from './package.json'; // Make sure resolveJsonModule is true in tsconfig
- *
- * type Scripts = keyof typeof pkg.scripts;
- *
- * export const config: TSGitHookConfig<Scripts> = {
- *   // Glob-based for file-dependent hooks
- *   'pre-commit': {
- *     '*.ts': 'test'
- *   },
- *   // Direct script for file-independent hooks
+ * type Scripts = keyof typeof import('./package.json')['scripts'];
+ * const config: TSGitHookConfig<Scripts> = {
+ *   'pre-commit': { '*.ts': 'test' },
  *   'pre-push': 'build'
  * };
  */
-export type TSGitHookConfig<T extends string = string> = Partial<
-	Record<GitHook, HookConfig<T>>
->;
+export type TSGitHookConfig<T extends string = string> = Partial<{
+	[K in GitHook]: K extends FileDependentHook
+		? GlobHookConfig<T>
+		: SimpleHookConfig<T>;
+}>;
