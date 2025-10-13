@@ -23,9 +23,14 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 
 			// Normalize keys to kebab-case
 			const normalizedConfig: TSGitHookConfig = {};
-			const configKeys = Object.keys(config) as GitHook[];
+			const configKeys = Object.keys(config) as (keyof TSGitHookConfig)[];
 
 			for (const hookName of configKeys) {
+				if (hookName.includes("-")) {
+					console.warn(
+						`Warning: Hook name "${hookName}" in config should be in camelCase.`,
+					);
+				}
 				const kebabCaseHookName = toKebabCase(hookName);
 				const hookValue = config[hookName];
 				if (hookValue) {

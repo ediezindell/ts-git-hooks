@@ -1,6 +1,6 @@
 import type { CamelCaseGitHook, GitHook, KebabCaseGitHook } from "../types";
 
-export const kebabCaseGitHooks: KebabCaseGitHook[] = [
+const kebabCaseGitHooks: KebabCaseGitHook[] = [
 	"pre-commit",
 	"prepare-commit-msg",
 	"commit-msg",
@@ -24,7 +24,7 @@ const camelToKebabMap = {
 	postMerge: "post-merge",
 	prePush: "pre-push",
 	preAutoGc: "pre-auto-gc",
-} as const;
+} satisfies Record<CamelCaseGitHook, KebabCaseGitHook>;
 
 export function toKebabCase(hook: GitHook): KebabCaseGitHook {
 	if (kebabCaseGitHooks.includes(hook as KebabCaseGitHook)) {

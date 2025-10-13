@@ -36,7 +36,7 @@ export async function main() {
 				console.error("Example: ts-git-hooks run pre-commit");
 				process.exit(1);
 			}
-			const success = await runHook(toKebabCase(hookName));
+			const success = await runHook(toKebabCase(hookName as GitHook));
 			if (!success) {
 				process.exit(1);
 			}
