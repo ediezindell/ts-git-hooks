@@ -1,6 +1,6 @@
 # ts-git-hooks
 
-TypeScript-first git hooks manager with type-safe configuration.
+TypeScript-first, type-safe Git hooks manager.
 
 ## Why ts-git-hooks?
 
@@ -12,11 +12,11 @@ TypeScript-first git hooks manager with type-safe configuration.
 
 `ts-git-hooks` is built on a few key principles to make managing your git hooks simple and robust.
 
-1.  **Type-Safe Scripts:** Leverage TypeScript to get full autocompletion and compile-time validation for your npm script names right from your `package.json`. No more typos or guesswork.
+1.  **Type-Safe Scripts:** Leverage TypeScript for full autocompletion and compile-time safety for your npm script names right from your `package.json`. No more typos or guesswork.
 
-2.  **Glob-based Targeting:** Use glob patterns to precisely control which scripts run on which files. A script for `'*.ts'` will only run against staged TypeScript files, and a script for `'*.css'` will only run against staged CSS files.
+2.  **Glob-based Targeting:** Use glob patterns to precisely control which scripts run on which files. A script for `'*.ts'` will only run against staged TypeScript files.
 
-3.  **Flexible Argument Handling:** Scripts automatically receive the list of matching files as arguments. For more complex needs, you can provide a function to format the arguments exactly as your script requires.
+3.  **Flexible Argument Handling:** Scripts automatically receive the list of matching **staged files** as arguments. For more complex needs, you can provide a function to format the arguments exactly as your script requires.
 
 4.  **Optimized for npm:** The entire workflow is designed to integrate seamlessly with your existing npm scripts, acting as a powerful, type-safe orchestrator for the tools you already use.
 
@@ -36,23 +36,7 @@ Run the init command to create a `ts-git-hooks.config.ts` file in your project r
 npx ts-git-hooks init
 ```
 
-This will generate a default configuration:
-
-```ts
-// ts-git-hooks.config.ts
-import type { TSGitHookConfig } from "ts-git-hooks";
-import pkg from "./package.json" with { type: "json" };
-
-export const config: TSGitHookConfig<keyof typeof pkg.scripts> = {
-	// For file-based hooks like `pre-commit`, use an object with glob patterns.
-	"pre-commit": {
-		"*.{js,ts,jsx,tsx}": ["lint", "test"],
-		"*.{md,json}": "format",
-	},
-	// For general hooks like `pre-push`, provide the script(s) directly.
-	"pre-push": "build",
-};
-```
+This will generate a default configuration that works with a standard `package.json` scripts section.
 
 ### 2. Install hooks
 
@@ -62,54 +46,47 @@ npx ts-git-hooks install
 
 That's it! Your git hooks are now active.
 
-## Configuration
+## Examples
 
-`ts-git-hooks` supports two configuration formats depending on the nature of the git hook.
+### Glob-based Config for `pre-commit`
 
-### 1. Glob-based Config (for file-dependent hooks)
-
-For hooks that operate on a subset of files, like `pre-commit`, you should use an object where keys are glob patterns. The corresponding scripts will only run if there are staged files matching the pattern.
+This configuration lints staged `.ts` files and formats staged markdown and json files.
 
 ```ts
-export const config: TSGitHookConfig = {
+// ts-git-hooks.config.ts
+export const config: TSGitHookConfig<"lint" | "format"> = {
   'pre-commit': {
-    '*.ts': 'tsc --noEmit', // Run tsc on staged .ts files
-    '*.{js,css,md}': 'prettier --write', // Format other files
+    '*.ts': 'lint',
+    '*.{md,json}': 'format',
   }
 };
 ```
 
-### 2. Direct Script Config (for file-independent hooks)
+### Direct Script Config for `pre-push`
 
-For hooks that are not file-specific, like `pre-push` or `post-merge`, you can provide a script or an array of scripts directly.
+This configuration runs the `test` and `build` scripts before any push.
 
 ```ts
-export const config: TSGitHookConfig = {
-  // Run a single script
-  'pre-push': 'test',
-
-  // Run multiple scripts in parallel
-  'post-merge': ['npm install', 'npm run build']
+// ts-git-hooks.config.ts
+export const config: TSGitHookConfig<"test" | "build"> = {
+  'pre-push': ['test', 'build']
 };
 ```
 
-### Type Safety
+### Integration with `package.json`
 
-The generic `TSGitHookConfig<T>` type can be populated with the script names from your `package.json` to provide type-safety and auto-completion in your editor.
+`ts-git-hooks` works by running your existing npm scripts. Here is an example `package.json` that would work with the configurations above.
 
-```ts
-import type { TSGitHookConfig } from "ts-git-hooks";
-import pkg from "./package.json" with { type: "json" };
-
-type Scripts = keyof typeof pkg.scripts;
-
-// ✅ TypeScript will autocomplete available scripts and catch typos.
-export const config: TSGitHookConfig<Scripts> = {
-  'pre-commit': {
-    '*.ts': 'lint' // 'lint' must exist in your package.json scripts
-  },
-  'pre-push': 'test' // 'test' must also exist
-};
+```json
+// package.json
+{
+  "scripts": {
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "build": "tsc"
+  }
+}
 ```
 
 ## Supported Hooks
