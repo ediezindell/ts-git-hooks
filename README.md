@@ -8,6 +8,22 @@ TypeScript-first git hooks manager with type-safe configuration.
 -   **Flexible Config**: Use glob patterns for file-based hooks (`pre-commit`) or simple scripts for general hooks (`pre-push`).
 -   **TypeScript First**: Write your config in `.ts` with full IDE support.
 
+## Core Concepts
+
+This tool is designed around a few core principles to provide an intuitive and powerful experience.
+
+1.  **Configuration Reflects Intent**: The structure of your configuration changes based on the hook's purpose, eliminating the need for special keys and making your setup declarative.
+    -   **File-dependent hooks** (e.g., `pre-commit`): Use an object with glob patterns as keys (`{ "*.ts": "lint" }`). Scripts run only against staged files that match their pattern.
+    -   **File-independent hooks** (e.g., `pre-push`): Use a direct script string or an array of scripts (`"test"` or `["test", "build"]`). These run unconditionally for the Git event.
+
+2.  **Type-Safety First**: By using the `TSGitHookConfig<keyof typeof pkg.scripts>` generic, you get full auto-completion and compile-time validation of your script names against your `package.json`, preventing common typos.
+
+3.  **Parallel by Default**: When you provide an array of scripts, they are executed in parallel to maximize speed. For sequential execution, create a single compound script in your `package.json` (e.g., `"lint-then-test": "npm run lint && npm run test"`).
+
+4.  **Smart Argument Handling**:
+    -   In **glob-based** configs, the corresponding script automatically receives the list of matching staged files as arguments.
+    -   In **direct script** configs, scripts are run without file arguments by default, as they are not tied to specific file changes.
+
 ## Installation
 
 ```bash
