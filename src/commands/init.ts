@@ -1,27 +1,19 @@
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
+import { promises as fs } from "node:fs";
+import path from "node:path";
 
-const configFileName = 'ts-git-hooks.config.ts';
+const configFileName = "ts-git-hooks.config.ts";
 
 const defaultConfigContent = `\
 import type { TSGitHookConfig } from 'ts-git-hooks';
+import pkg from './package.json' with { type: 'json' };
 
-/**
- * @see https://github.com/ediezindell/ts-git-hooks#type-safety
- *
- * To get full type-safety, you can pass your package.json scripts as a generic.
- *
- * @example
- * import pkg from './package.json'; // Make sure resolveJsonModule is true in tsconfig
- * type Scripts = keyof typeof pkg.scripts;
- * export const config: TSGitHookConfig<Scripts> = { ... };
- */
-export const config: TSGitHookConfig = {
+export const config: TSGitHookConfig<keyof typeof pkg.scripts> = {
   'pre-commit': {
-    run: ['npm test'],
+    '*.{js,ts,jsx,tsx}': ['lint', 'format'],
+    '*.{md,json}': 'format',
   },
   'pre-push': {
-    run: [],
+    run: 'test',
   },
 };
 `;
@@ -32,29 +24,29 @@ export const config: TSGitHookConfig = {
  * @returns True if the file exists, false otherwise.
  */
 async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
+	try {
+		await fs.access(filePath);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 /**
  * Initializes the project by creating a `ts-git-hooks.config.ts` file.
  */
 export async function init() {
-  const configFilePath = path.join(process.cwd(), configFileName);
+	const configFilePath = path.join(process.cwd(), configFileName);
 
-  if (await fileExists(configFilePath)) {
-    console.log('Configuration file already exists.');
-    return;
-  }
+	if (await fileExists(configFilePath)) {
+		console.log("Configuration file already exists.");
+		return;
+	}
 
-  try {
-    await fs.writeFile(configFilePath, defaultConfigContent, 'utf-8');
-    console.log(`Configuration file created at ${configFileName}`);
-  } catch (error) {
-    console.error('Failed to create configuration file:', error);
-  }
+	try {
+		await fs.writeFile(configFilePath, defaultConfigContent, "utf-8");
+		console.log(`Configuration file created at ${configFileName}`);
+	} catch (error) {
+		console.error("Failed to create configuration file:", error);
+	}
 }

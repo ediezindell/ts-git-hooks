@@ -1,19 +1,19 @@
 export type GitHook =
-  // Client-Side Hooks
-  | 'pre-commit'
-  | 'prepare-commit-msg'
-  | 'commit-msg'
-  | 'post-commit'
-  | 'pre-rebase'
-  | 'post-rewrite'
-  | 'post-checkout'
-  | 'post-merge'
-  | 'pre-push'
-  | 'pre-auto-gc'
-  // Server-Side Hooks
-  | 'pre-receive'
-  | 'update'
-  | 'post-receive';
+	// Client-Side Hooks
+	| "pre-commit"
+	| "prepare-commit-msg"
+	| "commit-msg"
+	| "post-commit"
+	| "pre-rebase"
+	| "post-rewrite"
+	| "post-checkout"
+	| "post-merge"
+	| "pre-push"
+	| "pre-auto-gc"
+	// Server-Side Hooks
+	| "pre-receive"
+	| "update"
+	| "post-receive";
 
 /**
  * A function that takes a list of file paths and returns a command string.
@@ -77,5 +77,5 @@ export type HookConfig<T extends string> = Record<string, Script<T>>;
  * };
  */
 export type TSGitHookConfig<T extends string = string> = Partial<
-  Record<GitHook, HookConfig<T>>
+	Record<GitHook, HookConfig<T>>
 >;
