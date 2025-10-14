@@ -3,7 +3,7 @@ import jiti from "jiti";
 import type { CamelCaseGitHook, TSGitHookConfig } from "../types";
 import { kebabToCamel } from "../utils/string";
 
-const configFileName = "ts-git-hooks.config.ts";
+const configFileName = "git-hooks.config.ts";
 
 /**
  * Loads the ts-git-hooks configuration from the project root.
