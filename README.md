@@ -30,7 +30,7 @@ npm install -D ts-git-hooks
 
 ### 1. Create a config file
 
-Run the init command to create a `ts-git-hooks.config.ts` file in your project root:
+Run the init command to create a `git-hooks.config.ts` file in your project root:
 
 ```bash
 npx ts-git-hooks init
@@ -53,7 +53,7 @@ That's it! Your git hooks are now active.
 This configuration lints staged `.ts` files and formats staged markdown and json files.
 
 ```ts
-// ts-git-hooks.config.ts
+// git-hooks.config.ts
 export const config: TSGitHookConfig<"lint" | "format"> = {
   'pre-commit': {
     '*.ts': 'lint',
@@ -67,7 +67,7 @@ export const config: TSGitHookConfig<"lint" | "format"> = {
 This configuration runs the `test` and `build` scripts before any push.
 
 ```ts
-// ts-git-hooks.config.ts
+// git-hooks.config.ts
 export const config: TSGitHookConfig<"test" | "build"> = {
   'pre-push': ['test', 'build']
 };
