@@ -3,6 +3,7 @@
 import { init } from "../commands/init.js";
 import { install } from "../commands/install.js";
 import { list } from "../commands/list.js";
+import { sync } from "../commands/sync.js";
 import { uninstall } from "../commands/uninstall.js";
 import { runHook } from "../core/runner.js";
 import type { GitHook } from "../types.js";
@@ -29,6 +30,10 @@ export async function main() {
 			await list();
 			break;
 
+		case "sync":
+			await sync();
+			break;
+
 		case "run": {
 			const hookName = args[0] as GitHook;
 			if (!hookName) {
@@ -50,7 +55,8 @@ export async function main() {
 Usage: ts-git-hooks <command>
 
 Available commands:
-  init        Create a default configuration file.
+  init        Create a default configuration file and sync script types.
+  sync        Update script type definitions from package.json.
   install     Install git hooks based on the configuration.
   uninstall   Remove installed git hooks.
   list        List all configured hooks.
