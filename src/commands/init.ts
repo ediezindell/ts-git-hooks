@@ -1,16 +1,17 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { generateScriptTypes } from "../core/type-generator";
 
 const configFileName = "git-hooks.config.ts";
-const tsConfigForHooksFileName = "tsconfig.githooks.json";
 
+// Updated content that imports the generated types
 const defaultConfigContent = `\
 import type { TSGitHookConfig } from 'ts-git-hooks';
-import pkg from './package.json' with { type: 'json' };
+import type { PackageScripts } from './git-hooks.d.ts';
 
-// Note: "build" script is added to "pre-commit" by default.
-// You can remove it if you don't want to run it on every commit.
-export const config: TSGitHookConfig<keyof typeof pkg.scripts> = {
+// For type safety, you can use the 'PackageScripts' type:
+// export const config: TSGitHookConfig<PackageScripts> = {
+export const config: TSGitHookConfig = {
   'pre-commit': {
     '*.{js,ts,jsx,tsx}': ['lint', 'test'],
     '*.{md,json}': 'format',
@@ -18,26 +19,6 @@ export const config: TSGitHookConfig<keyof typeof pkg.scripts> = {
   'pre-push': 'build',
 };
 `;
-
-const generateTsConfigForHooksContent = (extendsTsConfig: boolean): string => {
-	const config: {
-		extends?: string;
-		compilerOptions: { resolveJsonModule: boolean; moduleResolution: string };
-		include: string[];
-	} = {
-		compilerOptions: {
-			resolveJsonModule: true,
-			moduleResolution: "node",
-		},
-		include: [configFileName],
-	};
-
-	if (extendsTsConfig) {
-		config.extends = "./tsconfig.json";
-	}
-
-	return JSON.stringify(config, null, 2);
-};
 
 /**
  * Checks if a file exists.
@@ -54,16 +35,10 @@ async function fileExists(filePath: string): Promise<boolean> {
 }
 
 /**
- * Initializes the project by creating a `git-hooks.config.ts` file
- * and a corresponding `tsconfig.githooks.json` for IDE support.
+ * Initializes the project by creating a config file and generating types.
  */
 export async function init() {
 	const configFilePath = path.join(process.cwd(), configFileName);
-	const tsConfigForHooksPath = path.join(
-		process.cwd(),
-		tsConfigForHooksFileName,
-	);
-	const rootTsConfigPath = path.join(process.cwd(), "tsconfig.json");
 
 	if (await fileExists(configFilePath)) {
 		console.log(`Configuration file "${configFileName}" already exists.`);
@@ -75,12 +50,13 @@ export async function init() {
 		await fs.writeFile(configFilePath, defaultConfigContent, "utf-8");
 		console.log(`Configuration file created at "${configFileName}"`);
 
-		// Create the tsconfig for IDE support
-		const rootTsConfigExists = await fileExists(rootTsConfigPath);
-		const tsConfigContent = generateTsConfigForHooksContent(rootTsConfigExists);
-		await fs.writeFile(tsConfigForHooksPath, tsConfigContent, "utf-8");
-		console.log(`IDE-assist file created at "${tsConfigForHooksFileName}"`);
+		// Generate the types from package.json
+		await generateScriptTypes();
 	} catch (error) {
-		console.error("Failed to create configuration files:", error);
+		console.error("Failed to create configuration file:", error);
+		// In case of error, clean up the created config file
+		if (await fileExists(configFilePath)) {
+			await fs.unlink(configFilePath);
+		}
 	}
 }
