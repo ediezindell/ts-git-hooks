@@ -2,20 +2,16 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { init } from "./init";
+import * as typeGenerator from "../core/type-generator";
 
-// Mock dependencies
 vi.mock("node:fs", () => ({
 	promises: {
 		access: vi.fn(),
 		writeFile: vi.fn(),
-		readFile: vi.fn(),
 	},
 }));
 
-// Mock the type generator module
-vi.mock("../core/type-generator", () => ({
-	generateScriptTypes: vi.fn(),
-}));
+vi.mock("../core/type-generator");
 
 describe("init command", () => {
 	let logSpy: vi.SpyInstance;
@@ -23,44 +19,70 @@ describe("init command", () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
 		logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		vi.spyOn(process, "exit").mockImplementation((() => {}) as any);
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	it("should create a config file and generate types if config does not exist", async () => {
+	it("should create a dynamic, type-safe config based on existing scripts", async () => {
 		// Arrange
+		const existingScripts = ["lint", "test", "build"];
 		vi.mocked(fs.access).mockRejectedValue(new Error("File not found"));
+		vi.mocked(typeGenerator.generateScriptTypes).mockResolvedValue(
+			existingScripts,
+		);
 		const configFilePath = path.join(process.cwd(), "git-hooks.config.ts");
-		const { generateScriptTypes } = await import("../core/type-generator");
 
 		// Act
 		await init();
 
 		// Assert
-		expect(fs.writeFile).toHaveBeenCalledWith(
-			configFilePath,
-			expect.any(String), // We don't need to test the exact content here
-			"utf-8",
-		);
-		expect(generateScriptTypes).toHaveBeenCalledOnce();
+		expect(typeGenerator.generateScriptTypes).toHaveBeenCalledOnce();
+		const writeFileCall = vi.mocked(fs.writeFile).mock.calls[0];
+		expect(writeFileCall[0]).toBe(configFilePath);
+		// Using .toContain to avoid brittle tests with spacing/formatting
+		expect(writeFileCall[1]).toContain("pre-commit:");
+		expect(writeFileCall[1]).toContain("'lint'");
+		expect(writeFileCall[1]).toContain("'test'");
+		expect(writeFileCall[1]).toContain("pre-push:");
+		expect(writeFileCall[1]).toContain("'build'");
 		expect(logSpy).toHaveBeenCalledWith(
 			'Configuration file created at "git-hooks.config.ts"',
 		);
 	});
 
-	it("should not create a config file or generate types if one already exists", async () => {
+	it("should create a config with commented out examples if no relevant scripts exist", async () => {
+		// Arrange
+		const existingScripts = ["dev", "start"];
+		vi.mocked(fs.access).mockRejectedValue(new Error("File not found"));
+		vi.mocked(typeGenerator.generateScriptTypes).mockResolvedValue(
+			existingScripts,
+		);
+		const configFilePath = path.join(process.cwd(), "git-hooks.config.ts");
+
+		// Act
+		await init();
+
+		// Assert
+		const writeFileCall = vi.mocked(fs.writeFile).mock.calls[0];
+		expect(writeFileCall[0]).toBe(configFilePath);
+		expect(writeFileCall[1]).toContain("// 'pre-commit'");
+		expect(writeFileCall[1]).toContain("// 'pre-push'");
+	});
+
+	it("should not create a file and log message if one already exists", async () => {
 		// Arrange
 		vi.mocked(fs.access).mockResolvedValue(undefined);
-		const { generateScriptTypes } = await import("../core/type-generator");
 
 		// Act
 		await init();
 
 		// Assert
 		expect(fs.writeFile).not.toHaveBeenCalled();
-		expect(generateScriptTypes).not.toHaveBeenCalled();
+		expect(typeGenerator.generateScriptTypes).not.toHaveBeenCalled();
 		expect(logSpy).toHaveBeenCalledWith(
 			'Configuration file "git-hooks.config.ts" already exists.',
 		);

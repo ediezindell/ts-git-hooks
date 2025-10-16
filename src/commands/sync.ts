@@ -7,8 +7,7 @@ export async function sync() {
 	try {
 		await generateScriptTypes();
 	} catch (error) {
-		// The core function already logs the specific error.
-		// We catch it here to prevent the process from exiting with a non-zero code
-		// unless we want it to. For now, just absorb it.
+		console.error("Failed to sync script types:", error);
+		process.exit(1);
 	}
 }

@@ -7,7 +7,7 @@ const typeDefFileName = "git-hooks.d.ts";
  * @param scriptNames An array of npm script names.
  * @returns A string containing the TypeScript type definition.
  */
-function generateTypeDefContent(scriptNames: string[]): string {
+export function generateTypeDefContent(scriptNames: string[]): string {
 	if (scriptNames.length === 0) {
 		return "export type PackageScripts = never;\n";
 	}
@@ -19,7 +19,7 @@ function generateTypeDefContent(scriptNames: string[]): string {
  * Reads package.json, extracts script names, and generates a .d.ts file.
  * @returns A promise that resolves when the file is written.
  */
-export async function generateScriptTypes(): Promise<void> {
+export async function generateScriptTypes(): Promise<string[]> {
 	try {
 		const packageJsonContent = await fs.readFile("package.json", "utf-8");
 		const packageJson = JSON.parse(packageJsonContent);
@@ -32,17 +32,16 @@ export async function generateScriptTypes(): Promise<void> {
 		console.log(
 			`Type definitions for npm scripts have been updated in '${typeDefFileName}'.`,
 		);
+		return scriptNames;
 	} catch (error: any) {
 		if (error.code === "ENOENT") {
 			console.error("Error: package.json not found in the current directory.");
-			// Re-throw a simpler error to make testing easier
-			throw new Error("package.json not found");
 		} else {
 			console.error(
 				"An error occurred while generating type definitions:",
 				error,
 			);
-			throw error;
 		}
+		throw error;
 	}
 }

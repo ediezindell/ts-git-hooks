@@ -26,10 +26,6 @@
     "url": "https://github.com/ediezindell/ts-git-hooks/issues"
   },
   "homepage": "https://github.com/ediezindell/ts-git-hooks#readme",
-  "files": [
-    "dist",
-    "README.md"
-  ],
   "devDependencies": {
     "@biomejs/biome": "^2.2.5",
     "@types/node": "^24.6.2",
