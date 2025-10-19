@@ -43,7 +43,7 @@ export async function install() {
 				runCommand = `${packageManager} ts-git-hooks run`;
 				break;
 			case "npm":
-				runCommand = `$(npm bin)/ts-git-hooks run`;
+				runCommand = `npm exec ts-git-hooks run`;
 				break;
 		}
 

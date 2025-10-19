@@ -49,14 +49,14 @@ describe("install command", () => {
 		expect(fs.mkdir).toHaveBeenCalledWith(gitHooksDir, { recursive: true });
 	});
 
-	it("should write hook files with '$(npm bin)' when package manager is npm", async () => {
+	it("should write hook files with 'npm exec' when package manager is npm", async () => {
 		// Act
 		await install();
 
 		// Assert
 		const preCommitPath = path.join(gitHooksDir, "pre-commit");
 		const expectedContent = expect.stringContaining(
-			"$(npm bin)/ts-git-hooks run",
+			"npm exec ts-git-hooks run",
 		);
 
 		expect(fs.writeFile).toHaveBeenCalledWith(
