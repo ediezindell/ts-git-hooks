@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../core/config";
+import { getPackageManager } from "../utils/packageManager";
 import { install } from "./install";
 
 // Mock dependencies
@@ -15,6 +16,7 @@ vi.mock("node:fs", () => ({
 	},
 }));
 vi.mock("../core/config");
+vi.mock("../utils/packageManager");
 
 const gitHooksDir = path.join(process.cwd(), ".git", "hooks");
 
@@ -25,6 +27,7 @@ describe("install command", () => {
 			"pre-commit": { run: ["lint"] },
 			"pre-push": { run: ["test"] },
 		});
+		vi.mocked(getPackageManager).mockReturnValue("npm");
 		const pkg = { scripts: { lint: "eslint .", test: "vitest" } };
 		vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(pkg));
 		vi.spyOn(console, "log").mockImplementation(() => {});
@@ -46,14 +49,58 @@ describe("install command", () => {
 		expect(fs.mkdir).toHaveBeenCalledWith(gitHooksDir, { recursive: true });
 	});
 
-	it("should create and write to hook files", async () => {
+	it("should write hook files with 'npm exec' when package manager is npm", async () => {
+		// Act
+		await install();
+
+		// Assert
+		const preCommitPath = path.join(gitHooksDir, "pre-commit");
+		const expectedContent = expect.stringContaining(
+			"npm exec ts-git-hooks run",
+		);
+
+		expect(fs.writeFile).toHaveBeenCalledWith(
+			preCommitPath,
+			expectedContent,
+			"utf-8",
+		);
+	});
+
+	it("should write hook files with 'yarn' when package manager is yarn", async () => {
+		// Arrange
+		vi.mocked(getPackageManager).mockReturnValue("yarn");
+
 		// Act
 		await install();
 
 		// Assert
 		const preCommitPath = path.join(gitHooksDir, "pre-commit");
 		const prePushPath = path.join(gitHooksDir, "pre-push");
-		const expectedContent = expect.stringContaining("#!/bin/sh");
+		const expectedContent = expect.stringContaining("yarn ts-git-hooks run");
+
+		expect(fs.writeFile).toHaveBeenCalledWith(
+			preCommitPath,
+			expectedContent,
+			"utf-8",
+		);
+		expect(fs.writeFile).toHaveBeenCalledWith(
+			prePushPath,
+			expectedContent,
+			"utf-8",
+		);
+	});
+
+	it("should write hook files with 'pnpm' when package manager is pnpm", async () => {
+		// Arrange
+		vi.mocked(getPackageManager).mockReturnValue("pnpm");
+
+		// Act
+		await install();
+
+		// Assert
+		const preCommitPath = path.join(gitHooksDir, "pre-commit");
+		const prePushPath = path.join(gitHooksDir, "pre-push");
+		const expectedContent = expect.stringContaining("pnpm ts-git-hooks run");
 
 		expect(fs.writeFile).toHaveBeenCalledWith(
 			preCommitPath,
@@ -102,6 +149,27 @@ describe("install command", () => {
 		expect(fs.writeFile).not.toHaveBeenCalled();
 		expect(console.log).toHaveBeenCalledWith(
 			expect.stringContaining("Configuration file not found or is empty."),
+		);
+	});
+
+	it("should log an error if package manager detection fails", async () => {
+		// Arrange
+		const errorMessage = "Could not determine package manager.";
+		vi.mocked(getPackageManager).mockImplementation(() => {
+			throw new Error(errorMessage);
+		});
+
+		// Act
+		await install();
+
+		// Assert
+		expect(console.error).toHaveBeenCalledWith(
+			"Failed to install git hooks:",
+			expect.any(Error),
+		);
+		expect(console.error).toHaveBeenCalledWith(
+			"Failed to install git hooks:",
+			expect.objectContaining({ message: errorMessage }),
 		);
 	});
 });
