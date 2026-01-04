@@ -80,7 +80,7 @@ export type SimpleHookConfig<T extends string> = Script<T>;
  * };
  */
 export type TSGitHookConfig<T extends string = string> = Partial<{
-	[K in CamelCaseGitHook]: K extends "preCommit"
+	[K in GitHook]: K extends "preCommit" | "pre-commit"
 		? GlobHookConfig<T>
 		: SimpleHookConfig<T>;
 }>;

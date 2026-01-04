@@ -2,6 +2,8 @@
 
 TypeScript-first, type-safe Git hooks manager.
 
+[English](README.md) | [日本語](README.ja.md)
+
 ## Why ts-git-hooks?
 
 -   **Type-safe**: Auto-completion for your `package.json` scripts.
