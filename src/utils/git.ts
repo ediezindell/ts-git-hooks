@@ -81,7 +81,11 @@ export async function getChangedFiles(): Promise<string[]> {
 		.filter((line) => {
 			// Matches modified (M), added (A), or untracked (??) files.
 			const prefix = line.slice(0, 2);
-			return prefix.trim().length > 0 && prefix !== " D"; // Exclude deleted files
+			return (
+				prefix.trim().length > 0 &&
+				prefix !== " D" && // Exclude deleted files (unstaged)
+				prefix !== "D " // Exclude deleted files (staged)
+			);
 		})
 		.map((line) => line.slice(3));
 }
