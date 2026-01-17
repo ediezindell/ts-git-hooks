@@ -20,10 +20,7 @@ describe("getPackageManager", () => {
 
 	it("should return 'pnpm' when user agent starts with pnpm", () => {
 		// Arrange
-		vi.stubEnv(
-			"npm_config_user_agent",
-			"pnpm/6.24.4 node/v16.13.1 linux x64",
-		);
+		vi.stubEnv("npm_config_user_agent", "pnpm/6.24.4 node/v16.13.1 linux x64");
 
 		// Act & Assert
 		expect(getPackageManager()).toBe("pnpm");

@@ -12,7 +12,7 @@ function execGit(command: string): Promise<string> {
 				reject(error);
 				return;
 			}
-			resolve(stdout.trim());
+			resolve(stdout);
 		});
 	});
 }
@@ -31,13 +31,30 @@ export async function getStagedFiles(): Promise<string[]> {
  * @returns A promise that resolves to true if there are unstaged changes, false otherwise.
  */
 export async function hasUnstagedChanges(): Promise<boolean> {
-	const stdout = await execGit("git status --porcelain");
-	// --porcelain returns output for staged, unstaged, and untracked files.
-	// We are interested in unstaged (M) and untracked (??).
-	return stdout.split("\n").some((line) => {
-		const prefix = line.slice(0, 2);
-		return prefix === " M" || prefix === "??";
-	});
+	const stdout = await execGit("git status --porcelain -z");
+	const parts = stdout.split("\0");
+
+	for (let i = 0; i < parts.length; i++) {
+		const part = parts[i];
+		if (!part) continue;
+
+		const prefix = part.slice(0, 2);
+		// X = status of index, Y = status of work tree
+		// ?? = untracked
+		// _M = modified in work tree
+		// _D = deleted in work tree
+		// We care about any change in the work tree (Y column) or untracked files.
+		if (prefix === "??" || (prefix[1] !== " " && prefix[1] !== undefined)) {
+			return true;
+		}
+
+		// Renames (R) and Copies (C) in porcelain -z format are followed by the old path
+		if (prefix.startsWith("R") || prefix.startsWith("C")) {
+			i++;
+		}
+	}
+
+	return false;
 }
 
 /**
@@ -72,22 +89,37 @@ export async function stashPop(): Promise<void> {
  * @returns A promise that resolves to an array of changed file paths.
  */
 export async function getChangedFiles(): Promise<string[]> {
-	const stdout = await execGit("git status --porcelain");
+	const stdout = await execGit("git status --porcelain -z");
 	if (!stdout) {
 		return [];
 	}
-	return stdout
-		.split("\n")
-		.filter((line) => {
-			// Matches modified (M), added (A), or untracked (??) files.
-			const prefix = line.slice(0, 2);
-			return (
-				prefix.trim().length > 0 &&
-				prefix !== " D" && // Exclude deleted files (unstaged)
-				prefix !== "D " // Exclude deleted files (staged)
-			);
-		})
-		.map((line) => line.slice(3));
+
+	const files: string[] = [];
+	const parts = stdout.split("\0");
+
+	for (let i = 0; i < parts.length; i++) {
+		const line = parts[i];
+		if (!line) continue;
+
+		const prefix = line.slice(0, 2);
+		const path = line.slice(3);
+
+		// Matches modified (M), added (A), or untracked (??) files.
+		// Exclude deleted files (D)
+		const isDeleted = prefix === " D" || prefix === "D ";
+		const hasChange = prefix.trim().length > 0;
+
+		if (hasChange && !isDeleted) {
+			files.push(path);
+		}
+
+		// Renames (R) and Copies (C) in porcelain -z format are followed by the old path
+		if (prefix.startsWith("R") || prefix.startsWith("C")) {
+			i++;
+		}
+	}
+
+	return files;
 }
 
 /**

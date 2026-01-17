@@ -28,9 +28,7 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 			for (const hookName of configKeys) {
 				const hookValue = config[hookName as keyof typeof config];
 				if (hookValue) {
-					const camelCaseHookName = kebabToCamel(
-						hookName,
-					) as CamelCaseGitHook;
+					const camelCaseHookName = kebabToCamel(hookName) as CamelCaseGitHook;
 					normalizedConfig[camelCaseHookName] = hookValue as any;
 				}
 			}
