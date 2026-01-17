@@ -33,9 +33,7 @@ describe("sync command", () => {
 				build: "tsc",
 			},
 		};
-		vi.mocked(fs.readFile).mockResolvedValue(
-			JSON.stringify(fakePackageJson),
-		);
+		vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(fakePackageJson));
 		const expectedTypeDefContent =
 			'export type PackageScripts = "test" | "lint" | "build";\n';
 
@@ -57,9 +55,7 @@ describe("sync command", () => {
 	it("should handle an empty scripts object in package.json", async () => {
 		// Arrange
 		const fakePackageJson = { scripts: {} };
-		vi.mocked(fs.readFile).mockResolvedValue(
-			JSON.stringify(fakePackageJson),
-		);
+		vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(fakePackageJson));
 		const expectedTypeDefContent = "export type PackageScripts = never;\n";
 
 		// Act

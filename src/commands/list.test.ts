@@ -28,7 +28,9 @@ describe("list command", () => {
 
 		// Assert
 		expect(logSpy).toHaveBeenCalledWith("Configured git hooks:");
-		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("pre-push: test"));
+		expect(logSpy).toHaveBeenCalledWith(
+			expect.stringContaining("pre-push: test"),
+		);
 		expect(logSpy).toHaveBeenCalledWith(
 			expect.stringContaining("post-merge: build, notify"),
 		);

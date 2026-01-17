@@ -94,7 +94,11 @@ describe("runHook", () => {
 
 		// Test pre-push
 		const prePushResult = await runHook("pre-push");
-		expect(spawn).toHaveBeenCalledWith("npm", ["run", "test"], expect.any(Object));
+		expect(spawn).toHaveBeenCalledWith(
+			"npm",
+			["run", "test"],
+			expect.any(Object),
+		);
 		expect(prePushResult).toBe(true);
 	});
 });
@@ -167,7 +171,11 @@ describe("Unconditional (file-independent) hook execution", () => {
 		});
 
 		const result = await runHook("pre-push");
-		expect(spawn).toHaveBeenCalledWith("npm", ["run", "test"], expect.any(Object));
+		expect(spawn).toHaveBeenCalledWith(
+			"npm",
+			["run", "test"],
+			expect.any(Object),
+		);
 		expect(result).toBe(true);
 	});
 
@@ -180,8 +188,16 @@ describe("Unconditional (file-independent) hook execution", () => {
 		});
 
 		const result = await runHook("pre-push");
-		expect(spawn).toHaveBeenCalledWith("npm", ["run", "test"], expect.any(Object));
-		expect(spawn).toHaveBeenCalledWith("npm", ["run", "build"], expect.any(Object));
+		expect(spawn).toHaveBeenCalledWith(
+			"npm",
+			["run", "test"],
+			expect.any(Object),
+		);
+		expect(spawn).toHaveBeenCalledWith(
+			"npm",
+			["run", "build"],
+			expect.any(Object),
+		);
 		expect(result).toBe(true);
 	});
 
