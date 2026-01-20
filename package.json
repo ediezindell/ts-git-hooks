@@ -1,5 +1,5 @@
 {
-  "name": "app",
+  "name": "ts-git-hooks",
   "version": "1.0.0",
   "description": "TypeScript-first git hooks manager with type-safe configuration.",
   "main": "dist/index.js",
