@@ -69,24 +69,52 @@ const getCommands = (script: Script<string>): Command<string>[] => {
 };
 
 /**
+ * Checks if two commands are equal.
+ * Equality is defined as:
+ * - Both are identical strings.
+ * - Both are tuples with identical script name and function reference.
+ */
+function areCommandsEqual(a: Command<string>, b: Command<string>): boolean {
+	if (typeof a === "string" && typeof b === "string") {
+		return a === b;
+	}
+	if (Array.isArray(a) && Array.isArray(b)) {
+		return a[0] === b[0] && a[1] === b[1];
+	}
+	return false;
+}
+
+/**
  * Resolves the scripts to run for a given hook configuration.
  * @param hookConfig The configuration for the specific git hook.
  * @param stagedFiles The list of currently staged files.
  * @returns An array of script strings to execute.
  */
-function resolveScriptsToRun(
+export function resolveScriptsToRun(
 	hookConfig: HookConfig,
 	stagedFiles: string[] | null,
 ): string[] {
 	const scriptsToRun = new Set<string>();
+	const batchedCommands: {
+		command: Command<string>;
+		files: Set<string>;
+	}[] = [];
 
 	const processListOfCommands = (
 		commands: Command<string>[],
 		files: string[],
-		isGlob: boolean,
 	) => {
 		for (const command of commands) {
-			scriptsToRun.add(processCommand(command, files, isGlob));
+			let batch = batchedCommands.find((b) =>
+				areCommandsEqual(b.command, command),
+			);
+			if (!batch) {
+				batch = { command, files: new Set() };
+				batchedCommands.push(batch);
+			}
+			for (const file of files) {
+				batch.files.add(file);
+			}
 		}
 	};
 
@@ -104,7 +132,7 @@ function resolveScriptsToRun(
 
 				if (matchingFiles.length > 0) {
 					const commandsToProcess = getCommands(script);
-					processListOfCommands(commandsToProcess, matchingFiles, true);
+					processListOfCommands(commandsToProcess, matchingFiles);
 				}
 			}
 		}
@@ -112,7 +140,13 @@ function resolveScriptsToRun(
 	// Case 2: Unconditional configuration
 	else {
 		const commandsToProcess = getCommands(hookConfig);
-		processListOfCommands(commandsToProcess, stagedFiles ?? [], false);
+		processListOfCommands(commandsToProcess, stagedFiles ?? []);
+	}
+
+	for (const batch of batchedCommands) {
+		scriptsToRun.add(
+			processCommand(batch.command, Array.from(batch.files), isGlob),
+		);
 	}
 
 	return Array.from(scriptsToRun);
