@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TSGitHookConfig } from "../types";
+import type { GlobHookConfig, TSGitHookConfig } from "../types";
 import {
 	addFiles,
 	getChangedFiles,
@@ -11,7 +11,7 @@ import {
 	stashPushKeepIndex,
 } from "../utils/git";
 import { loadConfig } from "./config";
-import { runHook } from "./runner";
+import { resolveScriptsToRun, runHook } from "./runner";
 
 // Mock dependencies
 vi.mock("./config");
@@ -251,5 +251,50 @@ describe("Auto-Fixing and Stashing", () => {
 		expect(addFiles).toHaveBeenCalledWith(["src/file.ts"]);
 		expect(stashPop).toHaveBeenCalled();
 		expect(result).toBe(true);
+	});
+});
+
+describe("resolveScriptsToRun", () => {
+	it("should batch identical commands for different glob patterns", () => {
+		const hookConfig: GlobHookConfig<string> = {
+			"*.ts": "echo",
+			"*.js": "echo",
+		};
+		const stagedFiles = ["a.ts", "b.js"];
+
+		const scripts = resolveScriptsToRun(hookConfig, stagedFiles);
+
+		// Expected behavior: ['echo a.ts b.js'] (order of files might vary)
+		expect(scripts).toHaveLength(1);
+		expect(scripts[0]).toContain("echo");
+		expect(scripts[0]).toContain("a.ts");
+		expect(scripts[0]).toContain("b.js");
+	});
+
+	it("should batch identical tuple commands if function reference is same", () => {
+		const myFn = (files: string[], script: string) =>
+			`${script} --files ${files.join(",")}`;
+		const hookConfig: GlobHookConfig<string> = {
+			"*.ts": ["lint", myFn],
+			"*.js": ["lint", myFn],
+		};
+		const stagedFiles = ["a.ts", "b.js"];
+
+		const scripts = resolveScriptsToRun(hookConfig, stagedFiles);
+
+		expect(scripts).toHaveLength(1);
+		expect(scripts[0]).toMatch(/lint --files (a\.ts,b\.js|b\.js,a\.ts)/);
+	});
+
+	it("should NOT batch if commands are different", () => {
+		const hookConfig: GlobHookConfig<string> = {
+			"*.ts": "echo1",
+			"*.js": "echo2",
+		};
+		const stagedFiles = ["a.ts", "b.js"];
+
+		const scripts = resolveScriptsToRun(hookConfig, stagedFiles);
+
+		expect(scripts).toHaveLength(2);
 	});
 });
