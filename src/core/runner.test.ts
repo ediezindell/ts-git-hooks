@@ -298,3 +298,60 @@ describe("resolveScriptsToRun", () => {
 		expect(scripts).toHaveLength(2);
 	});
 });
+
+describe("Performance Optimizations", () => {
+	beforeEach(() => {
+		setupDefaultMocks();
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("should NOT call getStagedFiles for simple hook without args function", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({ prePush: "test" });
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		const result = await runHook("pre-push");
+
+		expect(getStagedFiles).not.toHaveBeenCalled();
+		expect(spawn).toHaveBeenCalledWith(
+			"npm",
+			["run", "test"],
+			expect.any(Object),
+		);
+		expect(result).toBe(true);
+	});
+
+	it("should call getStagedFiles for glob-based hook", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({ preCommit: { "*.ts": "lint" } });
+		vi.mocked(getStagedFiles).mockResolvedValue(["a.ts"]);
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		await runHook("pre-commit");
+		expect(getStagedFiles).toHaveBeenCalled();
+	});
+
+	it("should call getStagedFiles for simple hook WITH args function", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({
+			prePush: ["lint", (files) => `echo ${files.length}`],
+		});
+		vi.mocked(getStagedFiles).mockResolvedValue(["a.ts"]);
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		await runHook("pre-push");
+		expect(getStagedFiles).toHaveBeenCalled();
+	});
+});

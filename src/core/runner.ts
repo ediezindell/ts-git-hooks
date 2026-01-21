@@ -69,6 +69,28 @@ const getCommands = (script: Script<string>): Command<string>[] => {
 };
 
 /**
+ * Determines if we need to fetch staged files based on the hook configuration.
+ * @param hookConfig The configuration for the hook.
+ * @returns True if staged files are needed, false otherwise.
+ */
+function shouldFetchStagedFiles(hookConfig: HookConfig): boolean {
+	const isGlob =
+		typeof hookConfig === "object" &&
+		!Array.isArray(hookConfig) &&
+		hookConfig !== null;
+
+	if (isGlob) {
+		return true;
+	}
+
+	// For simple hooks, check if any command uses a custom argument function.
+	const commands = getCommands(hookConfig);
+	return commands.some(
+		(cmd) => Array.isArray(cmd) && typeof cmd[1] === "function",
+	);
+}
+
+/**
  * Checks if two commands are equal.
  * Equality is defined as:
  * - Both are identical strings.
@@ -198,7 +220,13 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		return true; // No configuration for this hook, so it's a success
 	}
 
-	const stagedFiles = await getStagedFiles();
+	// Optimization: Only fetch staged files if the hook configuration needs them.
+	// Glob-based hooks need them for matching.
+	// Simple hooks only need them if they use a custom argument function.
+	const stagedFiles = shouldFetchStagedFiles(hookConfig)
+		? await getStagedFiles()
+		: [];
+
 	const finalScripts = resolveScriptsToRun(hookConfig, stagedFiles);
 
 	if (finalScripts.length === 0) {
