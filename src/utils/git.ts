@@ -1,18 +1,35 @@
-import { exec } from "node:child_process";
+import { spawn } from "node:child_process";
 
 /**
- * Promisified version of `exec` for running git commands.
+ * Promisified version of `spawn` for running git commands.
+ * Uses `spawn` directly to avoid shell overhead and argument parsing issues.
  */
-function execGit(command: string): Promise<string> {
+function execGit(args: string[]): Promise<string> {
 	return new Promise((resolve, reject) => {
-		exec(command, (error, stdout, stderr) => {
-			if (error) {
+		const child = spawn("git", args);
+		let stdout = "";
+		let stderr = "";
+
+		child.stdout.on("data", (data) => {
+			stdout += data.toString();
+		});
+
+		child.stderr.on("data", (data) => {
+			stderr += data.toString();
+		});
+
+		child.on("close", (code) => {
+			if (code === 0) {
+				resolve(stdout);
+			} else {
 				// stderr is often used for progress indicators by git, so we only log it for actual errors.
-				console.error(`Error executing: ${command}\n${stderr}`);
-				reject(error);
-				return;
+				console.error(`Error executing: git ${args.join(" ")}\n${stderr}`);
+				reject(new Error(`Git command failed with exit code ${code}`));
 			}
-			resolve(stdout);
+		});
+
+		child.on("error", (error) => {
+			reject(error);
 		});
 	});
 }
@@ -22,7 +39,7 @@ function execGit(command: string): Promise<string> {
  * @returns A promise that resolves to an array of staged file paths.
  */
 export async function getStagedFiles(): Promise<string[]> {
-	const stdout = await execGit("git diff --cached --name-only");
+	const stdout = await execGit(["diff", "--cached", "--name-only"]);
 	return stdout.split("\n").filter(Boolean);
 }
 
@@ -31,7 +48,7 @@ export async function getStagedFiles(): Promise<string[]> {
  * @returns A promise that resolves to true if there are unstaged changes, false otherwise.
  */
 export async function hasUnstagedChanges(): Promise<boolean> {
-	const stdout = await execGit("git status --porcelain -z");
+	const stdout = await execGit(["status", "--porcelain", "-z"]);
 	const parts = stdout.split("\0");
 
 	for (let i = 0; i < parts.length; i++) {
@@ -63,9 +80,12 @@ export async function hasUnstagedChanges(): Promise<boolean> {
  * @returns A promise that resolves to true if a stash was created, false otherwise.
  */
 export async function stashPushKeepIndex(): Promise<boolean> {
-	const stdout = await execGit(
-		"git stash push --keep-index --include-untracked",
-	);
+	const stdout = await execGit([
+		"stash",
+		"push",
+		"--keep-index",
+		"--include-untracked",
+	]);
 	return !stdout.includes("No local changes to save");
 }
 
@@ -75,7 +95,7 @@ export async function stashPushKeepIndex(): Promise<boolean> {
  */
 export async function stashPop(): Promise<void> {
 	try {
-		await execGit("git stash pop");
+		await execGit(["stash", "pop"]);
 	} catch (error) {
 		console.error(
 			"Error popping stash. This may be due to a conflict. Please resolve it manually.",
@@ -89,7 +109,7 @@ export async function stashPop(): Promise<void> {
  * @returns A promise that resolves to an array of changed file paths.
  */
 export async function getChangedFiles(): Promise<string[]> {
-	const stdout = await execGit("git status --porcelain -z");
+	const stdout = await execGit(["status", "--porcelain", "-z"]);
 	if (!stdout) {
 		return [];
 	}
@@ -130,6 +150,7 @@ export async function addFiles(files: string[]): Promise<void> {
 	if (files.length === 0) {
 		return;
 	}
-	const fileList = files.map((file) => `"${file}"`).join(" ");
-	await execGit(`git add ${fileList}`);
+	// Pass files directly as arguments to git add.
+	// This avoids shell quoting issues and command length limits are handled better by spawn.
+	await execGit(["add", ...files]);
 }
