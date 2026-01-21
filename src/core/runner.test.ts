@@ -354,4 +354,38 @@ describe("Performance Optimizations", () => {
 		await runHook("pre-push");
 		expect(getStagedFiles).toHaveBeenCalled();
 	});
+
+	it("should NOT stash changes for commit-msg hook", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({ commitMsg: "commitlint" });
+		// Even if there are unstaged changes
+		vi.mocked(hasUnstagedChanges).mockResolvedValue(true);
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		await runHook("commit-msg");
+
+		// It should NOT try to stash
+		expect(stashPushKeepIndex).not.toHaveBeenCalled();
+		expect(stashPop).not.toHaveBeenCalled();
+	});
+
+	it("should stash changes for pre-commit hook if dirty", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({ preCommit: { "*.ts": "lint" } });
+		vi.mocked(getStagedFiles).mockResolvedValue(["a.ts"]);
+		vi.mocked(hasUnstagedChanges).mockResolvedValue(true);
+		vi.mocked(stashPushKeepIndex).mockResolvedValue(true);
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		await runHook("pre-commit");
+
+		expect(stashPushKeepIndex).toHaveBeenCalled();
+		expect(stashPop).toHaveBeenCalled();
+	});
 });

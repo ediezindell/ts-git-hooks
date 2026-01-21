@@ -236,9 +236,24 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 
 	let stashCreated = false;
 
+	// Optimization: Skip stashing for hooks that don't need a clean working directory.
+	// Hooks like commit-msg only check metadata and don't touch project files.
+	// Post-hooks run after the action, so stashing is unnecessary overhead.
+	const hooksSkippingStash: string[] = [
+		"commit-msg",
+		"prepare-commit-msg",
+		"post-commit",
+		"post-checkout",
+		"post-merge",
+		"post-rewrite",
+	];
+
 	try {
 		// 1. Stash unstaged changes if they exist
-		if (await hasUnstagedChanges()) {
+		if (
+			!hooksSkippingStash.includes(hookName) &&
+			(await hasUnstagedChanges())
+		) {
 			console.log("ts-git-hooks: Stashing unstaged changes...");
 			stashCreated = await stashPushKeepIndex();
 		}
