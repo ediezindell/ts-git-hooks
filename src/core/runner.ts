@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import type {
 	ArgsFn,
 	CamelCaseGitHook,
@@ -19,16 +19,22 @@ import { kebabToCamel } from "../utils/string";
 import { loadConfig } from "./config";
 
 /**
- * Processes a command, resolving it to a final script string.
+ * Represents an executable command.
+ * Can be a simple string (handled via shell) or an object with split arguments (handled directly).
+ */
+export type Executable = string | { script: string; args: string[] };
+
+/**
+ * Processes a command, resolving it to a final Executable.
  * @param command The command to process.
  * @param files The list of files to pass to the command.
- * @returns The resolved script string.
+ * @returns The resolved Executable.
  */
 function processCommand(
 	command: Command<string>,
 	files: string[],
 	isGlob: boolean,
-): string {
+): Executable {
 	if (Array.isArray(command) && typeof command[1] === "function") {
 		// Command is a tuple: [script, formatArguments]
 		const [script, formatArguments] = command as [string, ArgsFn];
@@ -39,7 +45,8 @@ function processCommand(
 	// For glob-based hooks, append file paths by default.
 	// For other hooks, only do so if they explicitly use a function.
 	if (isGlob && files.length > 0) {
-		return `${script} ${files.join(" ")}`;
+		// Optimization: Return object to avoid shell spawn and improve argument safety
+		return { script, args: files };
 	}
 
 	return script;
@@ -114,8 +121,8 @@ function areCommandsEqual(a: Command<string>, b: Command<string>): boolean {
 export async function resolveScriptsToRun(
 	hookConfig: HookConfig,
 	stagedFiles: string[] | null,
-): Promise<string[]> {
-	const scriptsToRun = new Set<string>();
+): Promise<Executable[]> {
+	const scriptsToRun: Executable[] = [];
 	const batchedCommands: {
 		command: Command<string>;
 		files: Set<string>;
@@ -168,34 +175,55 @@ export async function resolveScriptsToRun(
 	}
 
 	for (const batch of batchedCommands) {
-		scriptsToRun.add(
+		scriptsToRun.push(
 			processCommand(batch.command, Array.from(batch.files), isGlob),
 		);
 	}
 
-	return Array.from(scriptsToRun);
+	return scriptsToRun;
 }
 
 /**
  * Executes a single npm script using `spawn`.
  * @param script The name of the npm script to run.
  */
-function executeScript(script: string): Promise<void> {
+function executeScript(executable: Executable): Promise<void> {
 	return new Promise((resolve, reject) => {
-		console.log(`> Running script: ${script}`);
-		// The entire script string (command + args) is passed to `npm run`.
-		// `shell: true` allows the shell to parse the command and its arguments.
-		const child = spawn("npm", ["run", script], {
-			stdio: "inherit",
-			shell: true,
-		});
+		const displayScript =
+			typeof executable === "string"
+				? executable
+				: `${executable.script} ${executable.args.join(" ")}`;
+		console.log(`> Running script: ${displayScript}`);
+
+		let child: ChildProcess;
+		if (typeof executable === "string") {
+			// The entire script string (command + args) is passed to `npm run`.
+			// `shell: true` allows the shell to parse the command and its arguments.
+			child = spawn("npm", ["run", executable], {
+				stdio: "inherit",
+				shell: true,
+			});
+		} else {
+			// Optimization: Avoid shell spawn by passing arguments directly.
+			// This is faster and avoids issues with unquoted arguments.
+			child = spawn(
+				"npm",
+				["run", executable.script, ...executable.args],
+				{
+					stdio: "inherit",
+					shell: false,
+				},
+			);
+		}
 
 		child.on("close", (code) => {
 			if (code === 0) {
 				resolve();
 			} else {
 				// Reject the promise if the script fails
-				reject(new Error(`Script "${script}" exited with code ${code}`));
+				reject(
+					new Error(`Script "${displayScript}" exited with code ${code}`),
+				);
 			}
 		});
 

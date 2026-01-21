@@ -13,7 +13,8 @@
     "format": "biome format --write src",
     "check": "biome check --write src",
     "build": "tsc",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "echo": "echo"
   },
   "repository": {
     "type": "git",
@@ -41,5 +42,6 @@
     "@types/micromatch": "^4.0.9",
     "jiti": "^2.6.1",
     "micromatch": "^4.0.8"
-  }
+  },
+  "type": "commonjs"
 }

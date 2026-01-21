@@ -85,19 +85,21 @@ describe("runHook", () => {
 
 		// Test pre-commit
 		const preCommitResult = await runHook("pre-commit");
+		// Custom function -> string -> shell: true
 		expect(spawn).toHaveBeenCalledWith(
 			"npm",
 			["run", "eslint my-file.js"],
-			expect.any(Object),
+			expect.objectContaining({ shell: true }),
 		);
 		expect(preCommitResult).toBe(true);
 
 		// Test pre-push
 		const prePushResult = await runHook("pre-push");
+		// Simple string -> string -> shell: true
 		expect(spawn).toHaveBeenCalledWith(
 			"npm",
 			["run", "test"],
-			expect.any(Object),
+			expect.objectContaining({ shell: true }),
 		);
 		expect(prePushResult).toBe(true);
 	});
@@ -125,15 +127,16 @@ describe("Glob-based (file-dependent) hook execution", () => {
 
 		const result = await runHook("pre-commit");
 
+		// Glob hooks without custom function -> object -> shell: false
 		expect(spawn).toHaveBeenCalledWith(
 			"npm",
-			["run", "tsc src/index.ts"],
-			expect.any(Object),
+			["run", "tsc", "src/index.ts"],
+			expect.objectContaining({ shell: false }),
 		);
 		expect(spawn).toHaveBeenCalledWith(
 			"npm",
-			["run", "format README.md"],
-			expect.any(Object),
+			["run", "format", "README.md"],
+			expect.objectContaining({ shell: false }),
 		);
 		expect(result).toBe(true);
 	});
@@ -264,11 +267,15 @@ describe("resolveScriptsToRun", () => {
 
 		const scripts = await resolveScriptsToRun(hookConfig, stagedFiles);
 
-		// Expected behavior: ['echo a.ts b.js'] (order of files might vary)
+		// Expected behavior: object with script 'echo' and args ['a.ts', 'b.js']
 		expect(scripts).toHaveLength(1);
-		expect(scripts[0]).toContain("echo");
-		expect(scripts[0]).toContain("a.ts");
-		expect(scripts[0]).toContain("b.js");
+		const executable = scripts[0];
+		expect(typeof executable).toBe("object");
+		if (typeof executable === "object") {
+			expect(executable.script).toBe("echo");
+			expect(executable.args).toContain("a.ts");
+			expect(executable.args).toContain("b.js");
+		}
 	});
 
 	it("should batch identical tuple commands if function reference is same", async () => {
