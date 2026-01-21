@@ -255,14 +255,14 @@ describe("Auto-Fixing and Stashing", () => {
 });
 
 describe("resolveScriptsToRun", () => {
-	it("should batch identical commands for different glob patterns", () => {
+	it("should batch identical commands for different glob patterns", async () => {
 		const hookConfig: GlobHookConfig<string> = {
 			"*.ts": "echo",
 			"*.js": "echo",
 		};
 		const stagedFiles = ["a.ts", "b.js"];
 
-		const scripts = resolveScriptsToRun(hookConfig, stagedFiles);
+		const scripts = await resolveScriptsToRun(hookConfig, stagedFiles);
 
 		// Expected behavior: ['echo a.ts b.js'] (order of files might vary)
 		expect(scripts).toHaveLength(1);
@@ -271,7 +271,7 @@ describe("resolveScriptsToRun", () => {
 		expect(scripts[0]).toContain("b.js");
 	});
 
-	it("should batch identical tuple commands if function reference is same", () => {
+	it("should batch identical tuple commands if function reference is same", async () => {
 		const myFn = (files: string[], script: string) =>
 			`${script} --files ${files.join(",")}`;
 		const hookConfig: GlobHookConfig<string> = {
@@ -280,20 +280,20 @@ describe("resolveScriptsToRun", () => {
 		};
 		const stagedFiles = ["a.ts", "b.js"];
 
-		const scripts = resolveScriptsToRun(hookConfig, stagedFiles);
+		const scripts = await resolveScriptsToRun(hookConfig, stagedFiles);
 
 		expect(scripts).toHaveLength(1);
 		expect(scripts[0]).toMatch(/lint --files (a\.ts,b\.js|b\.js,a\.ts)/);
 	});
 
-	it("should NOT batch if commands are different", () => {
+	it("should NOT batch if commands are different", async () => {
 		const hookConfig: GlobHookConfig<string> = {
 			"*.ts": "echo1",
 			"*.js": "echo2",
 		};
 		const stagedFiles = ["a.ts", "b.js"];
 
-		const scripts = resolveScriptsToRun(hookConfig, stagedFiles);
+		const scripts = await resolveScriptsToRun(hookConfig, stagedFiles);
 
 		expect(scripts).toHaveLength(2);
 	});

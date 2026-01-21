@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import micromatch from "micromatch";
 import type {
 	ArgsFn,
 	CamelCaseGitHook,
@@ -112,10 +111,10 @@ function areCommandsEqual(a: Command<string>, b: Command<string>): boolean {
  * @param stagedFiles The list of currently staged files.
  * @returns An array of script strings to execute.
  */
-export function resolveScriptsToRun(
+export async function resolveScriptsToRun(
 	hookConfig: HookConfig,
 	stagedFiles: string[] | null,
-): string[] {
+): Promise<string[]> {
 	const scriptsToRun = new Set<string>();
 	const batchedCommands: {
 		command: Command<string>;
@@ -147,6 +146,9 @@ export function resolveScriptsToRun(
 
 	if (isGlob) {
 		if (stagedFiles && stagedFiles.length > 0) {
+			// Optimization: Lazy load micromatch only when needed
+			const { default: micromatch } = await import("micromatch");
+
 			for (const [globPattern, script] of Object.entries(hookConfig)) {
 				const matchingFiles = micromatch(stagedFiles, globPattern, {
 					matchBase: true,
@@ -227,7 +229,7 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		? await getStagedFiles()
 		: [];
 
-	const finalScripts = resolveScriptsToRun(hookConfig, stagedFiles);
+	const finalScripts = await resolveScriptsToRun(hookConfig, stagedFiles);
 
 	if (finalScripts.length === 0) {
 		console.log(`ts-git-hooks: No scripts to run for ${hookName}.`);
