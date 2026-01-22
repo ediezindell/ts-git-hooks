@@ -1,11 +1,5 @@
 #!/usr/bin/env node
 
-import { init } from "../commands/init.js";
-import { install } from "../commands/install.js";
-import { list } from "../commands/list.js";
-import { sync } from "../commands/sync.js";
-import { uninstall } from "../commands/uninstall.js";
-import { runHook } from "../core/runner.js";
 import type { GitHook } from "../types.js";
 import { toKebabCase } from "../utils/casing.js";
 
@@ -13,26 +7,38 @@ export async function main() {
 	const command = process.argv[2];
 	const args = process.argv.slice(3);
 
+	// Optimization: Lazy load command modules to improve CLI startup time.
+	// This prevents loading unnecessary dependencies for commands that are not being executed.
 	switch (command) {
-		case "init":
+		case "init": {
+			const { init } = await import("../commands/init.js");
 			await init();
 			break;
+		}
 
-		case "install":
+		case "install": {
+			const { install } = await import("../commands/install.js");
 			await install();
 			break;
+		}
 
-		case "uninstall":
+		case "uninstall": {
+			const { uninstall } = await import("../commands/uninstall.js");
 			await uninstall();
 			break;
+		}
 
-		case "list":
+		case "list": {
+			const { list } = await import("../commands/list.js");
 			await list();
 			break;
+		}
 
-		case "sync":
+		case "sync": {
+			const { sync } = await import("../commands/sync.js");
 			await sync();
 			break;
+		}
 
 		case "run": {
 			const hookName = args[0] as GitHook;
@@ -41,6 +47,7 @@ export async function main() {
 				console.error("Example: ts-git-hooks run pre-commit");
 				process.exit(1);
 			}
+			const { runHook } = await import("../core/runner.js");
 			const success = await runHook(toKebabCase(hookName as GitHook));
 			if (!success) {
 				process.exit(1);
