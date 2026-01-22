@@ -2,6 +2,7 @@
 
 import type { GitHook } from "../types.js";
 import { toKebabCase } from "../utils/casing.js";
+import { logger } from "../utils/logger.js";
 
 export async function main() {
 	const command = process.argv[2];
@@ -43,8 +44,8 @@ export async function main() {
 		case "run": {
 			const hookName = args[0] as GitHook;
 			if (!hookName) {
-				console.error('Error: "run" command requires a hook name.');
-				console.error("Example: ts-git-hooks run pre-commit");
+				logger.error('Error: "run" command requires a hook name.');
+				logger.log("Example: ts-git-hooks run pre-commit");
 				process.exit(1);
 			}
 			const { runHook } = await import("../core/runner.js");
@@ -58,7 +59,7 @@ export async function main() {
 		case undefined:
 		case "--help":
 		case "-h":
-			console.log(`
+			logger.log(`
 Usage: ts-git-hooks <command>
 
 Available commands:
@@ -72,10 +73,8 @@ Available commands:
 			break;
 
 		default:
-			console.error(`Error: Unknown command "${command}".`);
-			console.log(
-				'Run "ts-git-hooks --help" for a list of available commands.',
-			);
+			logger.error(`Error: Unknown command "${command}".`);
+			logger.log('Run "ts-git-hooks --help" for a list of available commands.');
 			process.exit(1);
 	}
 }
@@ -83,8 +82,8 @@ Available commands:
 // This check ensures that main() is called only when the script is executed directly
 if (process.env.NODE_ENV !== "test") {
 	main().catch((error) => {
-		console.error("An unexpected error occurred:");
-		console.error(error);
+		logger.error("An unexpected error occurred:");
+		logger.error(error);
 		process.exit(1);
 	});
 }

@@ -76,10 +76,14 @@ describe("uninstall command", () => {
 
 		// Assert
 		expect(console.log).toHaveBeenCalledWith(
-			"ts-git-hooks uninstalled successfully.",
+			expect.stringContaining("ts-git-hooks uninstalled successfully."),
 		);
-		expect(console.log).toHaveBeenCalledWith("  - Removed pre-commit");
-		expect(console.log).toHaveBeenCalledWith("  - Removed pre-push");
+		expect(console.log).toHaveBeenCalledWith(
+			expect.stringContaining("  - Removed pre-commit"),
+		);
+		expect(console.log).toHaveBeenCalledWith(
+			expect.stringContaining("  - Removed pre-push"),
+		);
 	});
 
 	it("should handle cases where hook files do not exist", async () => {
@@ -91,6 +95,8 @@ describe("uninstall command", () => {
 
 		// Assert
 		expect(fs.unlink).not.toHaveBeenCalled();
-		expect(console.log).toHaveBeenCalledWith("No ts-git-hooks to uninstall.");
+		expect(console.log).toHaveBeenCalledWith(
+			expect.stringContaining("No ts-git-hooks to uninstall."),
+		);
 	});
 });

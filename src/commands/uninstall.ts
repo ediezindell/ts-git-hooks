@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../core/config";
 import type { KebabCaseGitHook } from "../types";
+import { logger } from "../utils/logger";
 
 const gitHooksDir = path.join(process.cwd(), ".git", "hooks");
 const hookIdentifier = "# This hook was installed by ts-git-hooks";
@@ -28,7 +29,7 @@ export async function uninstall() {
 		: [];
 
 	if (configuredHooks.length === 0) {
-		console.log("No hooks configured. Nothing to uninstall.");
+		logger.info("No hooks configured. Nothing to uninstall.");
 		return;
 	}
 
@@ -51,11 +52,11 @@ export async function uninstall() {
 	}
 
 	if (removedHooks.length > 0) {
-		console.log("ts-git-hooks uninstalled successfully.");
+		logger.success("ts-git-hooks uninstalled successfully.");
 		for (const hookName of removedHooks) {
-			console.log(`  - Removed ${hookName}`);
+			logger.log(`  - Removed ${hookName}`);
 		}
 	} else {
-		console.log("No ts-git-hooks to uninstall.");
+		logger.info("No ts-git-hooks to uninstall.");
 	}
 }

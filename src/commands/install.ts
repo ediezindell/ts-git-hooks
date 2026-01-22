@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../core/config";
 import type { CamelCaseGitHook, KebabCaseGitHook } from "../types";
+import { logger } from "../utils/logger";
 import { getPackageManager } from "../utils/packageManager";
 import { camelToKebab } from "../utils/string";
 
@@ -28,9 +29,7 @@ ${command} ${hook}
 export async function install() {
 	const config = await loadConfig();
 	if (!config || Object.keys(config).length === 0) {
-		console.log(
-			"Configuration file not found or is empty. No hooks to install.",
-		);
+		logger.warn("Configuration file not found or is empty. No hooks to install.");
 		return;
 	}
 
@@ -70,14 +69,15 @@ export async function install() {
 		}
 
 		if (installedHooks.length > 0) {
-			console.log("ts-git-hooks installed successfully.");
+			logger.success("ts-git-hooks installed successfully.");
 			for (const hookName of installedHooks) {
-				console.log(`  - ${hookName}`);
+				logger.log(`  - ${hookName}`);
 			}
 		} else {
-			console.log("No hooks were configured to be installed.");
+			logger.info("No hooks were configured to be installed.");
 		}
 	} catch (error) {
-		console.error("Failed to install git hooks:", error);
+		logger.error("Failed to install git hooks:");
+		logger.error(error);
 	}
 }

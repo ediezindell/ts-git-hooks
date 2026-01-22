@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { generateScriptTypes } from "../core/type-generator";
+import { logger } from "../utils/logger";
 
 const configFileName = "git-hooks.config.ts";
 
@@ -41,19 +42,20 @@ export async function init() {
 	const configFilePath = path.join(process.cwd(), configFileName);
 
 	if (await fileExists(configFilePath)) {
-		console.log(`Configuration file "${configFileName}" already exists.`);
+		logger.warn(`Configuration file "${configFileName}" already exists.`);
 		return;
 	}
 
 	try {
 		// Create the main config file
 		await fs.writeFile(configFilePath, defaultConfigContent, "utf-8");
-		console.log(`Configuration file created at "${configFileName}"`);
+		logger.success(`Configuration file created at "${configFileName}"`);
 
 		// Generate the types from package.json
 		await generateScriptTypes();
 	} catch (error) {
-		console.error("Failed to create configuration file:", error);
+		logger.error("Failed to create configuration file:");
+		logger.error(error);
 		// In case of error, clean up the created config file
 		if (await fileExists(configFilePath)) {
 			await fs.unlink(configFilePath);

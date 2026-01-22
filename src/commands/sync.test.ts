@@ -48,7 +48,9 @@ describe("sync command", () => {
 			"utf-8",
 		);
 		expect(logSpy).toHaveBeenCalledWith(
-			"Type definitions for npm scripts have been updated in 'git-hooks.d.ts'.",
+			expect.stringContaining(
+				"Type definitions for npm scripts have been updated in 'git-hooks.d.ts'.",
+			),
 		);
 	});
 
@@ -68,7 +70,9 @@ describe("sync command", () => {
 			"utf-8",
 		);
 		expect(logSpy).toHaveBeenCalledWith(
-			"Type definitions for npm scripts have been updated in 'git-hooks.d.ts'.",
+			expect.stringContaining(
+				"Type definitions for npm scripts have been updated in 'git-hooks.d.ts'.",
+			),
 		);
 	});
 
@@ -84,7 +88,9 @@ describe("sync command", () => {
 		// Assert
 		expect(fs.writeFile).not.toHaveBeenCalled();
 		expect(errorSpy).toHaveBeenCalledWith(
-			"Error: package.json not found in the current directory.",
+			expect.stringContaining(
+				"Error: package.json not found in the current directory.",
+			),
 		);
 	});
 });

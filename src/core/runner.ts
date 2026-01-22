@@ -14,6 +14,7 @@ import {
 	stashPop,
 	stashPushKeepIndex,
 } from "../utils/git";
+import { logger } from "../utils/logger";
 import { kebabToCamel } from "../utils/string";
 import { loadConfig } from "./config";
 
@@ -201,7 +202,7 @@ function executeScript(executable: Executable): Promise<void> {
 			typeof executable === "string"
 				? executable
 				: `${executable.script} ${executable.args.join(" ")}`;
-		console.log(`> Running script: ${displayScript}`);
+		logger.info(`Running script: ${displayScript}`);
 
 		let child: ChildProcess;
 		if (typeof executable === "string") {
@@ -243,7 +244,7 @@ function executeScript(executable: Executable): Promise<void> {
 export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	const config = await loadConfig();
 	if (!config) {
-		console.error("Error: ts-git-hooks configuration file not found.");
+		logger.error("Configuration file not found.");
 		return false;
 	}
 
@@ -265,7 +266,7 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	);
 
 	if (finalScripts.length === 0) {
-		console.log(`ts-git-hooks: No scripts to run for ${hookName}.`);
+		logger.info(`No scripts to run for ${hookName}.`);
 		return true;
 	}
 
@@ -288,12 +289,12 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		if (!hooksSkippingStash.includes(hookName)) {
 			stashCreated = await stashPushKeepIndex();
 			if (stashCreated) {
-				console.log("ts-git-hooks: Stashed unstaged changes.");
+				logger.info("Stashed unstaged changes.");
 			}
 		}
 
 		// 2. Run the scripts
-		console.log(`ts-git-hooks: Running scripts for ${hookName}...`);
+		logger.info(`Running scripts for ${hookName}...`);
 		// Use Promise.all to ensure that if any script fails, the entire hook fails.
 		await Promise.all(finalScripts.map((script) => executeScript(script)));
 
@@ -303,31 +304,29 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 			// This avoids scanning the entire working directory with `git status` which can be slow.
 			const changedFiles = await getChangedFiles(matchedFiles ?? undefined);
 			if (changedFiles.length > 0) {
-				console.log("ts-git-hooks: Adding modified files to the index...");
+				logger.info("Adding modified files to the index...");
 				await addFiles(changedFiles);
 			}
 		}
 
-		console.log(`\nts-git-hooks: ${hookName} hook passed.`);
+		logger.success(`${hookName} hook passed.`);
 		return true;
 	} catch (error: unknown) {
-		console.error(
-			`\nts-git-hooks: An error occurred during the ${hookName} hook.`,
-		);
+		logger.error(`An error occurred during the ${hookName} hook.`);
 		if (error instanceof Error && error.message) {
 			// Don't log the full error object, just the message for cleaner output.
-			console.error(error.message);
+			logger.error(error.message);
 		}
 		return false;
 	} finally {
 		// 4. Pop the stash if one was created
 		if (stashCreated) {
 			try {
-				console.log("ts-git-hooks: Restoring unstaged changes...");
+				logger.info("Restoring unstaged changes...");
 				await stashPop();
 			} catch (_stashError) {
-				console.error(
-					`\nCRITICAL: Failed to restore unstaged changes. Please resolve conflicts manually.`,
+				logger.error(
+					`CRITICAL: Failed to restore unstaged changes. Please resolve conflicts manually.`,
 				);
 				// This is a critical failure, we need to inform the user and exit
 				process.exit(1);
