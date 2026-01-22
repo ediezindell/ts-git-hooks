@@ -42,6 +42,10 @@
 **Learning:** Hardcoding `npm` in the runner adds overhead if the user is using `pnpm` or `yarn`, and can lead to inconsistencies. Using the detected package manager from `npm_config_user_agent` is faster and more reliable.
 **Action:** Updated `executeScript` in `src/core/runner.ts` to use `getPackageManager()` to dynamically select the correct executable.
 
+## 2026-01-23 - Jiti caching behavior
+**Learning:** Verified that `jiti` v2 (used in the project) defaults to `fsCache: true` (or equivalent), creating a cache in `node_modules/.cache/jiti`. This means config loading is already optimized for subsequent runs.
+**Action:** No action needed; confirmed existing architecture is performant.
+
 ## 2026-01-22 - Optimize simple commands
 **Learning:** Commands in `npm run` scripts are often simple strings (e.g. "lint", "test"). Spawning a shell (`shell: true`) for these adds overhead. We can safely split simple commands (no quotes) and use `shell: false`.
 **Action:** Refactored `processCommand` to split simple commands into `{ script, args }`, enabling `shell: false` execution. Also fixed a bug where arguments in glob hooks were being treated as part of the script name in the optimized path.
