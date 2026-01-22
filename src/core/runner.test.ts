@@ -93,11 +93,11 @@ describe("runHook", () => {
 
 		// Test pre-push
 		const prePushResult = await runHook("pre-push");
-		// Simple string -> string -> shell: true
+		// Simple string -> object -> shell: false (Optimization)
 		expect(spawn).toHaveBeenCalledWith(
 			"npm",
 			["run", "test"],
-			expect.objectContaining({ shell: true }),
+			expect.objectContaining({ shell: false }),
 		);
 		expect(prePushResult).toBe(true);
 	});
@@ -135,6 +135,48 @@ describe("Glob-based (file-dependent) hook execution", () => {
 			"npm",
 			["run", "format", "README.md"],
 			expect.objectContaining({ shell: false }),
+		);
+		expect(result).toBe(true);
+	});
+
+	it("should correctly handle glob hooks with arguments (bug fix)", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({
+			preCommit: { "*.ts": "lint --fix" },
+		});
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		const result = await runHook("pre-commit");
+
+		// Should split "lint --fix" and use shell: false
+		expect(spawn).toHaveBeenCalledWith(
+			"npm",
+			["run", "lint", "--fix", "src/index.ts"],
+			expect.objectContaining({ shell: false }),
+		);
+		expect(result).toBe(true);
+	});
+
+	it("should fallback to shell: true for glob hooks with quotes", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({
+			preCommit: { "*.ts": 'lint --config "my config"' },
+		});
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		const result = await runHook("pre-commit");
+
+		// Should use shell: true and quoted files
+		expect(spawn).toHaveBeenCalledWith(
+			"npm",
+			['run', 'lint --config "my config" "src/index.ts"'],
+			expect.objectContaining({ shell: true }),
 		);
 		expect(result).toBe(true);
 	});

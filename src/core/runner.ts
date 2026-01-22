@@ -40,15 +40,34 @@ function processCommand(
 		return formatArguments(files, script);
 	}
 
-	const script = String(command);
-	// For glob-based hooks, append file paths by default.
-	// For other hooks, only do so if they explicitly use a function.
-	if (isGlob && files.length > 0) {
-		// Optimization: Return object to avoid shell spawn and improve argument safety
-		return { script, args: files };
+	const commandString = String(command);
+	const hasQuotes = commandString.includes('"') || commandString.includes("'");
+
+	if (!hasQuotes) {
+		// Optimization: Split simple commands to avoid shell spawn.
+		// This works for "test", "lint --fix", etc.
+		const parts = commandString.split(/\s+/).filter(Boolean);
+		const script = parts[0];
+		const args = parts.slice(1);
+
+		if (isGlob && files.length > 0) {
+			args.push(...files);
+		}
+
+		return { script, args };
 	}
 
-	return script;
+	// For glob-based hooks with quotes, we must construct a single string
+	// because returning an object would treat the whole commandString as the script name
+	// (which fails if it has spaces/quotes).
+	if (isGlob && files.length > 0) {
+		// We must quote the files because they are being interpolated into a shell command string.
+		// JSON.stringify is a safe enough way to quote filenames for shell (adds double quotes).
+		const quotedFiles = files.map((f) => JSON.stringify(f)).join(" ");
+		return `${commandString} ${quotedFiles}`;
+	}
+
+	return commandString;
 }
 
 /**

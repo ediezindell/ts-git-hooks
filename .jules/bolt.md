@@ -37,3 +37,7 @@
 ## 2026-01-22 - Optimize git output decoding
 **Learning:** Concatenating `Buffer.toString()` chunks (e.g., `stdout += data.toString()`) is unsafe for split multi-byte characters and slower than `StringDecoder`. `StringDecoder` correctly handles split characters and is ~15% faster for large outputs.
 **Action:** Refactored `src/utils/git.ts` to use `StringDecoder` for `stdout` and `stderr` processing.
+
+## 2026-01-22 - Optimize simple commands
+**Learning:** Commands in `npm run` scripts are often simple strings (e.g. "lint", "test"). Spawning a shell (`shell: true`) for these adds overhead. We can safely split simple commands (no quotes) and use `shell: false`.
+**Action:** Refactored `processCommand` to split simple commands into `{ script, args }`, enabling `shell: false` execution. Also fixed a bug where arguments in glob hooks were being treated as part of the script name in the optimized path.
