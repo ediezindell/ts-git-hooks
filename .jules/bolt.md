@@ -29,3 +29,7 @@
 ## 2026-01-22 - Filter deleted files from staged files
 **Learning:** `git diff --cached --name-only` includes deleted files. Passing these to tools (e.g. linters) causes failures or unnecessary processing overhead.
 **Action:** Added `--diff-filter=ACMR` to `getStagedFiles` to only include Added, Copied, Modified, and Renamed files, excluding Deleted (D) ones.
+
+## 2026-01-22 - Lazy load CLI commands
+**Learning:** Top-level imports in the CLI entry point load all command modules (and their dependencies) at startup, even if only one command is executed. This added ~30ms overhead.
+**Action:** Replaced static imports with `await import()` inside the `switch` statement in `src/cli/index.ts` to only load the required command module.
