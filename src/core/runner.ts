@@ -11,7 +11,6 @@ import {
 	addFiles,
 	getChangedFiles,
 	getStagedFiles,
-	hasUnstagedChanges,
 	stashPop,
 	stashPushKeepIndex,
 } from "../utils/git";
@@ -280,12 +279,11 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 
 	try {
 		// 1. Stash unstaged changes if they exist
-		if (
-			!hooksSkippingStash.includes(hookName) &&
-			(await hasUnstagedChanges())
-		) {
-			console.log("ts-git-hooks: Stashing unstaged changes...");
+		if (!hooksSkippingStash.includes(hookName)) {
 			stashCreated = await stashPushKeepIndex();
+			if (stashCreated) {
+				console.log("ts-git-hooks: Stashed unstaged changes.");
+			}
 		}
 
 		// 2. Run the scripts

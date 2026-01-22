@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getChangedFiles, getStagedFiles, hasUnstagedChanges } from "./git";
+import { getChangedFiles, getStagedFiles } from "./git";
 
 vi.mock("node:child_process", () => ({
 	spawn: vi.fn(),
@@ -60,49 +60,6 @@ describe("getChangedFiles", () => {
 		mockSpawn("R  new.txt\0old.txt\0");
 		const files = await getChangedFiles();
 		expect(files).toEqual(["new.txt"]);
-	});
-});
-
-describe("hasUnstagedChanges", () => {
-	afterEach(() => {
-		vi.resetAllMocks();
-	});
-
-	it("should return true if there are modified files ( M)", async () => {
-		mockSpawn(" M modified.txt\0");
-		const hasChanges = await hasUnstagedChanges();
-		expect(hasChanges).toBe(true);
-        expect(spawn).toHaveBeenCalledWith("git", ["status", "--porcelain", "-z"]);
-	});
-
-	it("should return true if there are untracked files (??)", async () => {
-		mockSpawn("?? untracked.txt\0");
-		const hasChanges = await hasUnstagedChanges();
-		expect(hasChanges).toBe(true);
-	});
-
-	it("should return false if there are only staged changes (M )", async () => {
-		mockSpawn("M  staged.txt\0");
-		const hasChanges = await hasUnstagedChanges();
-		expect(hasChanges).toBe(false);
-	});
-
-	it("should return false if there are no changes", async () => {
-		mockSpawn("");
-		const hasChanges = await hasUnstagedChanges();
-		expect(hasChanges).toBe(false);
-	});
-
-	it("should return true for RM (renamed and modified)", async () => {
-		mockSpawn("RM new.txt\0old.txt\0");
-		const hasChanges = await hasUnstagedChanges();
-		expect(hasChanges).toBe(true);
-	});
-
-	it("should return false for R  (staged rename only)", async () => {
-		mockSpawn("R  new.txt\0old.txt\0");
-		const hasChanges = await hasUnstagedChanges();
-		expect(hasChanges).toBe(false);
 	});
 });
 

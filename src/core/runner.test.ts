@@ -6,7 +6,6 @@ import {
 	addFiles,
 	getChangedFiles,
 	getStagedFiles,
-	hasUnstagedChanges,
 	stashPop,
 	stashPushKeepIndex,
 } from "../utils/git";
@@ -39,7 +38,6 @@ const setupDefaultMocks = () => {
 	vi.spyOn(console, "error").mockImplementation(() => {});
 
 	vi.mocked(getStagedFiles).mockResolvedValue([]);
-	vi.mocked(hasUnstagedChanges).mockResolvedValue(false);
 	vi.mocked(stashPushKeepIndex).mockResolvedValue(false);
 	vi.mocked(stashPop).mockResolvedValue(undefined);
 	vi.mocked(getChangedFiles).mockResolvedValue([]);
@@ -244,7 +242,6 @@ describe("Auto-Fixing and Stashing", () => {
 	});
 
 	it("should run full auto-fixing flow and return true", async () => {
-		vi.mocked(hasUnstagedChanges).mockResolvedValue(true);
 		vi.mocked(stashPushKeepIndex).mockResolvedValue(true);
 		vi.mocked(getChangedFiles).mockResolvedValue(["src/file.ts"]);
 
@@ -364,8 +361,6 @@ describe("Performance Optimizations", () => {
 
 	it("should NOT stash changes for commit-msg hook", async () => {
 		vi.mocked(loadConfig).mockResolvedValue({ commitMsg: "commitlint" });
-		// Even if there are unstaged changes
-		vi.mocked(hasUnstagedChanges).mockResolvedValue(true);
 		vi.mocked(spawn).mockImplementation(() => {
 			const p = new MockChildProcess();
 			simulateSuccess(p);
@@ -382,7 +377,6 @@ describe("Performance Optimizations", () => {
 	it("should stash changes for pre-commit hook if dirty", async () => {
 		vi.mocked(loadConfig).mockResolvedValue({ preCommit: { "*.ts": "lint" } });
 		vi.mocked(getStagedFiles).mockResolvedValue(["a.ts"]);
-		vi.mocked(hasUnstagedChanges).mockResolvedValue(true);
 		vi.mocked(stashPushKeepIndex).mockResolvedValue(true);
 		vi.mocked(spawn).mockImplementation(() => {
 			const p = new MockChildProcess();
@@ -394,5 +388,22 @@ describe("Performance Optimizations", () => {
 
 		expect(stashPushKeepIndex).toHaveBeenCalled();
 		expect(stashPop).toHaveBeenCalled();
+	});
+
+	it("should attempt to stash but not pop if no unstaged changes", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({ preCommit: { "*.ts": "lint" } });
+		vi.mocked(getStagedFiles).mockResolvedValue(["a.ts"]);
+		// stashPushKeepIndex returns false (no changes)
+		vi.mocked(stashPushKeepIndex).mockResolvedValue(false);
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		await runHook("pre-commit");
+
+		expect(stashPushKeepIndex).toHaveBeenCalled();
+		expect(stashPop).not.toHaveBeenCalled();
 	});
 });

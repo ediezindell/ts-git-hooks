@@ -44,37 +44,6 @@ export async function getStagedFiles(): Promise<string[]> {
 }
 
 /**
- * Checks if there are any unstaged changes (including untracked files).
- * @returns A promise that resolves to true if there are unstaged changes, false otherwise.
- */
-export async function hasUnstagedChanges(): Promise<boolean> {
-	const stdout = await execGit(["status", "--porcelain", "-z"]);
-	const parts = stdout.split("\0");
-
-	for (let i = 0; i < parts.length; i++) {
-		const part = parts[i];
-		if (!part) continue;
-
-		const prefix = part.slice(0, 2);
-		// X = status of index, Y = status of work tree
-		// ?? = untracked
-		// _M = modified in work tree
-		// _D = deleted in work tree
-		// We care about any change in the work tree (Y column) or untracked files.
-		if (prefix === "??" || (prefix[1] !== " " && prefix[1] !== undefined)) {
-			return true;
-		}
-
-		// Renames (R) and Copies (C) in porcelain -z format are followed by the old path
-		if (prefix.startsWith("R") || prefix.startsWith("C")) {
-			i++;
-		}
-	}
-
-	return false;
-}
-
-/**
  * Stashes unstaged changes, including untracked files, but keeps the index.
  * It also checks if a stash was actually created.
  * @returns A promise that resolves to true if a stash was created, false otherwise.
