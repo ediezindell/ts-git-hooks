@@ -27,6 +27,27 @@ function mockSpawn(stdoutData: string, exitCode = 0, stderrData = "") {
 	return child;
 }
 
+// Helper to mock spawn process with chunks
+function mockSpawnChunks(stdoutChunks: Buffer[], exitCode = 0) {
+	const stdout = new EventEmitter();
+	const stderr = new EventEmitter();
+	const child = new EventEmitter();
+	(child as any).stdout = stdout;
+	(child as any).stderr = stderr;
+
+	(spawn as unknown as ReturnType<typeof vi.fn>).mockReturnValue(child);
+
+	// Trigger events on next tick to simulate async process
+	setTimeout(() => {
+		for (const chunk of stdoutChunks) {
+			stdout.emit("data", chunk);
+		}
+		child.emit("close", exitCode);
+	}, 0);
+
+	return child;
+}
+
 describe("getChangedFiles", () => {
 	afterEach(() => {
 		vi.resetAllMocks();
@@ -56,6 +77,26 @@ describe("getChangedFiles", () => {
 		mockSpawn("R  new.txt\0old.txt\0");
 		const files = await getChangedFiles();
 		expect(files).toEqual(["new.txt"]);
+	});
+
+	it("should correctly handle multi-byte characters split across chunks", async () => {
+		// Euro sign (€) is 3 bytes in UTF-8: E2 82 AC
+		// We split it so E2 is in first chunk, 82 AC is in second
+		const euroBuffer = Buffer.from("€");
+		const chunk1 = Buffer.concat([
+			Buffer.from("?? file_with_"),
+			euroBuffer.subarray(0, 1),
+		]);
+		const chunk2 = Buffer.concat([
+			euroBuffer.subarray(1),
+			Buffer.from(".txt\0"),
+		]);
+
+		mockSpawnChunks([chunk1, chunk2]);
+
+		const files = await getChangedFiles();
+		// If decoding is broken, it will likely return "file_with_.txt" or similar
+		expect(files).toEqual(["file_with_€.txt"]);
 	});
 });
 

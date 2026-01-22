@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 
 /**
  * Promisified version of `spawn` for running git commands.
@@ -7,18 +8,25 @@ import { spawn } from "node:child_process";
 function execGit(args: string[]): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const child = spawn("git", args);
+		const stdoutDecoder = new StringDecoder("utf8");
+		const stderrDecoder = new StringDecoder("utf8");
 		let stdout = "";
 		let stderr = "";
 
 		child.stdout.on("data", (data) => {
-			stdout += data.toString();
+			// Use StringDecoder to correctly handle multi-byte characters split across chunks
+			stdout += stdoutDecoder.write(data);
 		});
 
 		child.stderr.on("data", (data) => {
-			stderr += data.toString();
+			stderr += stderrDecoder.write(data);
 		});
 
 		child.on("close", (code) => {
+			// Flush any remaining bytes
+			stdout += stdoutDecoder.end();
+			stderr += stderrDecoder.end();
+
 			if (code === 0) {
 				resolve(stdout);
 			} else {
