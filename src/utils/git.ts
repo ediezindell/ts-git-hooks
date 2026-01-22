@@ -77,13 +77,22 @@ export async function stashPop(): Promise<void> {
  * Gets a list of files that have been modified or created in the working directory.
  * @returns A promise that resolves to an array of changed file paths.
  */
-export async function getChangedFiles(): Promise<string[]> {
-	const stdout = await execGit(["status", "--porcelain", "-z"]);
+export async function getChangedFiles(files?: string[]): Promise<string[]> {
+	if (files && files.length === 0) {
+		return [];
+	}
+
+	const args = ["status", "--porcelain", "-z"];
+	if (files) {
+		args.push("--", ...files);
+	}
+
+	const stdout = await execGit(args);
 	if (!stdout) {
 		return [];
 	}
 
-	const files: string[] = [];
+	const changedFiles: string[] = [];
 	const parts = stdout.split("\0");
 
 	for (let i = 0; i < parts.length; i++) {
@@ -99,7 +108,7 @@ export async function getChangedFiles(): Promise<string[]> {
 		const hasChange = prefix.trim().length > 0;
 
 		if (hasChange && !isDeleted) {
-			files.push(path);
+			changedFiles.push(path);
 		}
 
 		// Renames (R) and Copies (C) in porcelain -z format are followed by the old path
@@ -108,7 +117,7 @@ export async function getChangedFiles(): Promise<string[]> {
 		}
 	}
 
-	return files;
+	return changedFiles;
 }
 
 /**

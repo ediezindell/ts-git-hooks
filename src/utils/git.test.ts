@@ -8,11 +8,7 @@ vi.mock("node:child_process", () => ({
 }));
 
 // Helper to mock spawn process
-function mockSpawn(
-	stdoutData: string,
-	exitCode = 0,
-	stderrData = "",
-) {
+function mockSpawn(stdoutData: string, exitCode = 0, stderrData = "") {
 	const stdout = new EventEmitter();
 	const stderr = new EventEmitter();
 	const child = new EventEmitter();
@@ -28,7 +24,7 @@ function mockSpawn(
 		child.emit("close", exitCode);
 	}, 0);
 
-    return child;
+	return child;
 }
 
 describe("getChangedFiles", () => {
@@ -41,7 +37,7 @@ describe("getChangedFiles", () => {
 
 		const files = await getChangedFiles();
 		expect(files).toEqual(["modified.txt"]);
-        expect(spawn).toHaveBeenCalledWith("git", ["status", "--porcelain", "-z"]);
+		expect(spawn).toHaveBeenCalledWith("git", ["status", "--porcelain", "-z"]);
 	});
 
 	it("should exclude files deleted in work tree ( D)", async () => {
@@ -72,7 +68,11 @@ describe("getStagedFiles", () => {
 		mockSpawn("file1.ts\nfile2.ts\n");
 		const files = await getStagedFiles();
 		expect(files).toEqual(["file1.ts", "file2.ts"]);
-        expect(spawn).toHaveBeenCalledWith("git", ["diff", "--cached", "--name-only"]);
+		expect(spawn).toHaveBeenCalledWith("git", [
+			"diff",
+			"--cached",
+			"--name-only",
+		]);
 	});
 
 	it("should return an empty array if no files are staged", async () => {
