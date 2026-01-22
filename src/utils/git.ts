@@ -39,7 +39,14 @@ function execGit(args: string[]): Promise<string> {
  * @returns A promise that resolves to an array of staged file paths.
  */
 export async function getStagedFiles(): Promise<string[]> {
-	const stdout = await execGit(["diff", "--cached", "--name-only"]);
+	// Use --diff-filter=ACMR to exclude deleted files (D).
+	// This prevents running tools on files that no longer exist, which would cause errors.
+	const stdout = await execGit([
+		"diff",
+		"--cached",
+		"--name-only",
+		"--diff-filter=ACMR",
+	]);
 	return stdout.split("\n").filter(Boolean);
 }
 

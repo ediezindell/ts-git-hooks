@@ -25,3 +25,7 @@
 ## 2026-01-21 - Optimize pre-commit status check
 **Learning:** `git status --porcelain` can be slow on large repositories. For glob-based pre-commit hooks, we often only care about changes to the files we processed.
 **Action:** Updated `runHook` to pass the list of matched files to `getChangedFiles`, restricting the git status check to only relevant files.
+
+## 2026-01-22 - Filter deleted files from staged files
+**Learning:** `git diff --cached --name-only` includes deleted files. Passing these to tools (e.g. linters) causes failures or unnecessary processing overhead.
+**Action:** Added `--diff-filter=ACMR` to `getStagedFiles` to only include Added, Copied, Modified, and Renamed files, excluding Deleted (D) ones.

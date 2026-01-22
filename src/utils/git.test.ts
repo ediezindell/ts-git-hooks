@@ -72,6 +72,7 @@ describe("getStagedFiles", () => {
 			"diff",
 			"--cached",
 			"--name-only",
+			"--diff-filter=ACMR",
 		]);
 	});
 
