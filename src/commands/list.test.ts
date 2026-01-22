@@ -7,9 +7,11 @@ vi.mock("../core/config");
 
 describe("list command", () => {
 	let logSpy: vi.SpyInstance;
+	let errorSpy: vi.SpyInstance;
 
 	beforeEach(() => {
 		logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 	});
 
 	afterEach(() => {
@@ -27,7 +29,9 @@ describe("list command", () => {
 		await list();
 
 		// Assert
-		expect(logSpy).toHaveBeenCalledWith("Configured git hooks:");
+		expect(logSpy).toHaveBeenCalledWith(
+			expect.stringContaining("Configured git hooks:"),
+		);
 		expect(logSpy).toHaveBeenCalledWith(
 			expect.stringContaining("pre-push: test"),
 		);
@@ -49,7 +53,9 @@ describe("list command", () => {
 		await list();
 
 		// Assert
-		expect(logSpy).toHaveBeenCalledWith("Configured git hooks:");
+		expect(logSpy).toHaveBeenCalledWith(
+			expect.stringContaining("Configured git hooks:"),
+		);
 		expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("pre-commit:"));
 		expect(logSpy).toHaveBeenCalledWith(
 			expect.stringContaining("*.{js,ts}: lint"),
@@ -67,7 +73,9 @@ describe("list command", () => {
 		await list();
 
 		// Assert
-		expect(logSpy).toHaveBeenCalledWith("No hooks configured.");
+		expect(logSpy).toHaveBeenCalledWith(
+			expect.stringContaining("No hooks configured."),
+		);
 	});
 
 	it("should handle a missing configuration file", async () => {
@@ -78,6 +86,8 @@ describe("list command", () => {
 		await list();
 
 		// Assert
-		expect(logSpy).toHaveBeenCalledWith("Configuration file not found.");
+		expect(errorSpy).toHaveBeenCalledWith(
+			expect.stringContaining("Configuration file not found."),
+		);
 	});
 });

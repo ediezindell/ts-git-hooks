@@ -5,6 +5,7 @@ import type {
 	HookConfig,
 	KebabCaseGitHook,
 } from "../types";
+import { logger } from "../utils/logger";
 import { camelToKebab } from "../utils/string";
 
 function scriptsToString<T extends string>(script: HookConfig<T>): string {
@@ -32,18 +33,18 @@ export async function list() {
 	const config = await loadConfig();
 
 	if (!config) {
-		console.log("Configuration file not found.");
+		logger.error("Configuration file not found.");
 		return;
 	}
 
 	const configuredHooks = Object.keys(config) as CamelCaseGitHook[];
 
 	if (configuredHooks.length === 0) {
-		console.log("No hooks configured.");
+		logger.info("No hooks configured.");
 		return;
 	}
 
-	console.log("Configured git hooks:");
+	logger.info("Configured git hooks:");
 	for (const hookName of configuredHooks) {
 		const hookConfig = config[hookName];
 		if (!hookConfig) {
@@ -58,14 +59,14 @@ export async function list() {
 			!Array.isArray(hookConfig) &&
 			hookConfig !== null
 		) {
-			console.log(`  - ${kebabCaseHookName}:`);
+			logger.log(`  - ${kebabCaseHookName}:`);
 			for (const [glob, script] of Object.entries(hookConfig)) {
-				console.log(`    - ${glob}: ${scriptsToString(script)}`);
+				logger.log(`    - ${glob}: ${scriptsToString(script)}`);
 			}
 		} else {
 			// Unconditional hook
 			const scripts = scriptsToString(hookConfig);
-			console.log(`  - ${kebabCaseHookName}: ${scripts}`);
+			logger.log(`  - ${kebabCaseHookName}: ${scripts}`);
 		}
 	}
 }

@@ -132,10 +132,14 @@ describe("install command", () => {
 
 		// Assert
 		expect(console.log).toHaveBeenCalledWith(
-			"ts-git-hooks installed successfully.",
+			expect.stringContaining("ts-git-hooks installed successfully."),
 		);
-		expect(console.log).toHaveBeenCalledWith("  - pre-commit");
-		expect(console.log).toHaveBeenCalledWith("  - pre-push");
+		expect(console.log).toHaveBeenCalledWith(
+			expect.stringContaining("  - pre-commit"),
+		);
+		expect(console.log).toHaveBeenCalledWith(
+			expect.stringContaining("  - pre-push"),
+		);
 	});
 
 	it("should handle the case where no config is found", async () => {
@@ -164,12 +168,10 @@ describe("install command", () => {
 
 		// Assert
 		expect(console.error).toHaveBeenCalledWith(
-			"Failed to install git hooks:",
-			expect.any(Error),
+			expect.stringContaining("Failed to install git hooks:"),
 		);
 		expect(console.error).toHaveBeenCalledWith(
-			"Failed to install git hooks:",
-			expect.objectContaining({ message: errorMessage }),
+			expect.stringContaining(errorMessage),
 		);
 	});
 });

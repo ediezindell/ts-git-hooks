@@ -1,4 +1,5 @@
 import { promises as fs } from "node:fs";
+import { logger } from "../utils/logger";
 
 const typeDefFileName = "git-hooks.d.ts";
 
@@ -29,19 +30,17 @@ export async function generateScriptTypes(): Promise<void> {
 		const typeDefContent = generateTypeDefContent(scriptNames);
 
 		await fs.writeFile(typeDefFileName, typeDefContent, "utf-8");
-		console.log(
+		logger.success(
 			`Type definitions for npm scripts have been updated in '${typeDefFileName}'.`,
 		);
 	} catch (error: any) {
 		if (error.code === "ENOENT") {
-			console.error("Error: package.json not found in the current directory.");
+			logger.error("Error: package.json not found in the current directory.");
 			// Re-throw a simpler error to make testing easier
 			throw new Error("package.json not found");
 		} else {
-			console.error(
-				"An error occurred while generating type definitions:",
-				error,
-			);
+			logger.error("An error occurred while generating type definitions:");
+			logger.error(error);
 			throw error;
 		}
 	}

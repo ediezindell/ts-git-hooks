@@ -46,7 +46,9 @@ describe("init command", () => {
 		);
 		expect(generateScriptTypes).toHaveBeenCalledOnce();
 		expect(logSpy).toHaveBeenCalledWith(
-			'Configuration file created at "git-hooks.config.ts"',
+			expect.stringContaining(
+				'Configuration file created at "git-hooks.config.ts"',
+			),
 		);
 	});
 
@@ -62,7 +64,9 @@ describe("init command", () => {
 		expect(fs.writeFile).not.toHaveBeenCalled();
 		expect(generateScriptTypes).not.toHaveBeenCalled();
 		expect(logSpy).toHaveBeenCalledWith(
-			'Configuration file "git-hooks.config.ts" already exists.',
+			expect.stringContaining(
+				'Configuration file "git-hooks.config.ts" already exists.',
+			),
 		);
 	});
 });

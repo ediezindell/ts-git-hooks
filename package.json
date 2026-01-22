@@ -41,7 +41,8 @@
   "dependencies": {
     "@types/micromatch": "^4.0.9",
     "jiti": "^2.6.1",
-    "micromatch": "^4.0.8"
+    "micromatch": "^4.0.8",
+    "picocolors": "^1.1.1"
   },
   "type": "commonjs"
 }
