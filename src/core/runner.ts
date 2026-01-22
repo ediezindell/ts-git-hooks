@@ -15,6 +15,7 @@ import {
 	stashPushKeepIndex,
 } from "../utils/git";
 import { logger } from "../utils/logger";
+import { getPackageManager } from "../utils/packageManager";
 import { kebabToCamel } from "../utils/string";
 import { loadConfig } from "./config";
 
@@ -23,6 +24,17 @@ import { loadConfig } from "./config";
  * Can be a simple string (handled via shell) or an object with split arguments (handled directly).
  */
 export type Executable = string | { script: string; args: string[] };
+
+/**
+ * Safely gets the package manager, defaulting to "npm" if detection fails.
+ */
+function safeGetPackageManager(): string {
+	try {
+		return getPackageManager();
+	} catch {
+		return "npm";
+	}
+}
 
 /**
  * Processes a command, resolving it to a final Executable.
@@ -223,21 +235,27 @@ function executeScript(executable: Executable): Promise<void> {
 				: `${executable.script} ${executable.args.join(" ")}`;
 		logger.info(`Running script: ${displayScript}`);
 
+		const packageManager = safeGetPackageManager();
 		let child: ChildProcess;
+
 		if (typeof executable === "string") {
-			// The entire script string (command + args) is passed to `npm run`.
+			// The entire script string (command + args) is passed to `npm run` (or pnpm/yarn).
 			// `shell: true` allows the shell to parse the command and its arguments.
-			child = spawn("npm", ["run", executable], {
+			child = spawn(packageManager, ["run", executable], {
 				stdio: "inherit",
 				shell: true,
 			});
 		} else {
 			// Optimization: Avoid shell spawn by passing arguments directly.
 			// This is faster and avoids issues with unquoted arguments.
-			child = spawn("npm", ["run", executable.script, ...executable.args], {
-				stdio: "inherit",
-				shell: false,
-			});
+			child = spawn(
+				packageManager,
+				["run", executable.script, ...executable.args],
+				{
+					stdio: "inherit",
+					shell: false,
+				},
+			);
 		}
 
 		child.on("close", (code) => {

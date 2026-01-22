@@ -9,12 +9,14 @@ import {
 	stashPop,
 	stashPushKeepIndex,
 } from "../utils/git";
+import { getPackageManager } from "../utils/packageManager";
 import { loadConfig } from "./config";
 import { resolveScriptsToRun, runHook } from "./runner";
 
 // Mock dependencies
 vi.mock("./config");
 vi.mock("../utils/git");
+vi.mock("../utils/packageManager");
 vi.mock("node:child_process");
 
 // A mock ChildProcess to control its events
@@ -42,6 +44,7 @@ const setupDefaultMocks = () => {
 	vi.mocked(stashPop).mockResolvedValue(undefined);
 	vi.mocked(getChangedFiles).mockResolvedValue([]);
 	vi.mocked(addFiles).mockResolvedValue(undefined);
+	vi.mocked(getPackageManager).mockReturnValue("npm");
 };
 
 describe("runHook", () => {
@@ -502,5 +505,23 @@ describe("Performance Optimizations", () => {
 
 		// Should check for changes in ALL files (undefined args)
 		expect(getChangedFiles).toHaveBeenCalledWith(undefined);
+	});
+
+	it("should use detected package manager (pnpm)", async () => {
+		vi.mocked(getPackageManager).mockReturnValue("pnpm");
+		vi.mocked(loadConfig).mockResolvedValue({ prePush: "test" });
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		await runHook("pre-push");
+
+		expect(spawn).toHaveBeenCalledWith(
+			"pnpm",
+			["run", "test"],
+			expect.any(Object),
+		);
 	});
 });
