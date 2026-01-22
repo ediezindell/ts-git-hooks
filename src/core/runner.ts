@@ -120,7 +120,7 @@ function areCommandsEqual(a: Command<string>, b: Command<string>): boolean {
 export async function resolveScriptsToRun(
 	hookConfig: HookConfig,
 	stagedFiles: string[] | null,
-): Promise<Executable[]> {
+): Promise<{ scripts: Executable[]; matchedFiles: string[] | null }> {
 	const scriptsToRun: Executable[] = [];
 	const batchedCommands: {
 		command: Command<string>;
@@ -150,7 +150,11 @@ export async function resolveScriptsToRun(
 		!Array.isArray(hookConfig) &&
 		hookConfig !== null;
 
+	let matchedFiles: string[] | null = null;
+
 	if (isGlob) {
+		const matchedFilesSet = new Set<string>();
+
 		if (stagedFiles && stagedFiles.length > 0) {
 			// Optimization: Lazy load micromatch only when needed
 			const { default: micromatch } = await import("micromatch");
@@ -160,12 +164,17 @@ export async function resolveScriptsToRun(
 					matchBase: true,
 				});
 
+				for (const file of matchingFiles) {
+					matchedFilesSet.add(file);
+				}
+
 				if (matchingFiles.length > 0) {
 					const commandsToProcess = getCommands(script);
 					processListOfCommands(commandsToProcess, matchingFiles);
 				}
 			}
 		}
+		matchedFiles = Array.from(matchedFilesSet);
 	}
 	// Case 2: Unconditional configuration
 	else {
@@ -179,7 +188,7 @@ export async function resolveScriptsToRun(
 		);
 	}
 
-	return scriptsToRun;
+	return { scripts: scriptsToRun, matchedFiles };
 }
 
 /**
@@ -205,14 +214,10 @@ function executeScript(executable: Executable): Promise<void> {
 		} else {
 			// Optimization: Avoid shell spawn by passing arguments directly.
 			// This is faster and avoids issues with unquoted arguments.
-			child = spawn(
-				"npm",
-				["run", executable.script, ...executable.args],
-				{
-					stdio: "inherit",
-					shell: false,
-				},
-			);
+			child = spawn("npm", ["run", executable.script, ...executable.args], {
+				stdio: "inherit",
+				shell: false,
+			});
 		}
 
 		child.on("close", (code) => {
@@ -220,9 +225,7 @@ function executeScript(executable: Executable): Promise<void> {
 				resolve();
 			} else {
 				// Reject the promise if the script fails
-				reject(
-					new Error(`Script "${displayScript}" exited with code ${code}`),
-				);
+				reject(new Error(`Script "${displayScript}" exited with code ${code}`));
 			}
 		});
 
@@ -256,7 +259,10 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		? await getStagedFiles()
 		: [];
 
-	const finalScripts = await resolveScriptsToRun(hookConfig, stagedFiles);
+	const { scripts: finalScripts, matchedFiles } = await resolveScriptsToRun(
+		hookConfig,
+		stagedFiles,
+	);
 
 	if (finalScripts.length === 0) {
 		console.log(`ts-git-hooks: No scripts to run for ${hookName}.`);
@@ -293,7 +299,9 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 
 		// 3. For pre-commit, stage any changes made by the scripts
 		if (hookName === "pre-commit") {
-			const changedFiles = await getChangedFiles();
+			// Optimization: For glob-based hooks, only check for changes in files that matched the globs.
+			// This avoids scanning the entire working directory with `git status` which can be slow.
+			const changedFiles = await getChangedFiles(matchedFiles ?? undefined);
 			if (changedFiles.length > 0) {
 				console.log("ts-git-hooks: Adding modified files to the index...");
 				await addFiles(changedFiles);

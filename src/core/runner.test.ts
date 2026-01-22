@@ -262,7 +262,7 @@ describe("resolveScriptsToRun", () => {
 		};
 		const stagedFiles = ["a.ts", "b.js"];
 
-		const scripts = await resolveScriptsToRun(hookConfig, stagedFiles);
+		const { scripts } = await resolveScriptsToRun(hookConfig, stagedFiles);
 
 		// Expected behavior: object with script 'echo' and args ['a.ts', 'b.js']
 		expect(scripts).toHaveLength(1);
@@ -284,7 +284,7 @@ describe("resolveScriptsToRun", () => {
 		};
 		const stagedFiles = ["a.ts", "b.js"];
 
-		const scripts = await resolveScriptsToRun(hookConfig, stagedFiles);
+		const { scripts } = await resolveScriptsToRun(hookConfig, stagedFiles);
 
 		expect(scripts).toHaveLength(1);
 		expect(scripts[0]).toMatch(/lint --files (a\.ts,b\.js|b\.js,a\.ts)/);
@@ -297,9 +297,29 @@ describe("resolveScriptsToRun", () => {
 		};
 		const stagedFiles = ["a.ts", "b.js"];
 
-		const scripts = await resolveScriptsToRun(hookConfig, stagedFiles);
+		const { scripts } = await resolveScriptsToRun(hookConfig, stagedFiles);
 
 		expect(scripts).toHaveLength(2);
+	});
+
+	it("should return matched files for glob hooks", async () => {
+		const hookConfig: GlobHookConfig<string> = {
+			"*.ts": "echo",
+		};
+		const stagedFiles = ["a.ts", "b.js"];
+
+		const { matchedFiles } = await resolveScriptsToRun(hookConfig, stagedFiles);
+
+		expect(matchedFiles).toEqual(["a.ts"]);
+	});
+
+	it("should return null matchedFiles for simple hooks", async () => {
+		const hookConfig = "echo";
+		const stagedFiles = ["a.ts"];
+
+		const { matchedFiles } = await resolveScriptsToRun(hookConfig, stagedFiles);
+
+		expect(matchedFiles).toBeNull();
 	});
 });
 
@@ -405,5 +425,40 @@ describe("Performance Optimizations", () => {
 
 		expect(stashPushKeepIndex).toHaveBeenCalled();
 		expect(stashPop).not.toHaveBeenCalled();
+	});
+
+	it("should optimize getChangedFiles call for glob hooks", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({
+			preCommit: { "*.ts": "lint" },
+		});
+		vi.mocked(getStagedFiles).mockResolvedValue(["src/file.ts", "README.md"]);
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		await runHook("pre-commit");
+
+		// Should only check for changes in matched files (src/file.ts)
+		expect(getChangedFiles).toHaveBeenCalledWith(["src/file.ts"]);
+	});
+
+	it("should check all files for simple hooks in pre-commit", async () => {
+		// @ts-expect-error - testing runtime behavior for simple hook in pre-commit
+		vi.mocked(loadConfig).mockResolvedValue({
+			preCommit: "lint",
+		});
+		vi.mocked(getStagedFiles).mockResolvedValue(["src/file.ts"]);
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		await runHook("pre-commit");
+
+		// Should check for changes in ALL files (undefined args)
+		expect(getChangedFiles).toHaveBeenCalledWith(undefined);
 	});
 });
