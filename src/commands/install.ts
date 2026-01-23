@@ -11,16 +11,15 @@ const gitHooksDir = path.join(process.cwd(), ".git", "hooks");
 /**
  * Generates the shell script content for a git hook.
  * This script will call the ts-git-hooks runner for the specific hook.
- * @param hook The name of the git hook.
+ * @param command The full command to execute.
  */
 const hookScriptContent = (
-	hook: KebabCaseGitHook,
 	command: string,
 ) => `#!/bin/sh
 # This hook was installed by ts-git-hooks
 # To uninstall, run 'npx ts-git-hooks uninstall'
 
-${command} ${hook}
+${command}
 `;
 
 /**
@@ -37,16 +36,6 @@ export async function install() {
 
 	try {
 		const packageManager = getPackageManager();
-		let runCommand: string;
-		switch (packageManager) {
-			case "yarn":
-			case "pnpm":
-				runCommand = `${packageManager} ts-git-hooks run`;
-				break;
-			case "npm":
-				runCommand = `npm exec ts-git-hooks run`;
-				break;
-		}
 
 		// 1. Ensure the .git/hooks directory exists.
 		await fs.mkdir(gitHooksDir, { recursive: true });
@@ -59,7 +48,23 @@ export async function install() {
 
 			const kebabCaseHookName = camelToKebab(hookName) as KebabCaseGitHook;
 			const hookPath = path.join(gitHooksDir, kebabCaseHookName);
-			const scriptContent = hookScriptContent(kebabCaseHookName, runCommand);
+
+			let command = "";
+			switch (packageManager) {
+				case "npm":
+					command = `if [ -x "./node_modules/.bin/ts-git-hooks" ]; then
+  exec ./node_modules/.bin/ts-git-hooks run ${kebabCaseHookName}
+else
+  exec npm exec ts-git-hooks run ${kebabCaseHookName}
+fi`;
+					break;
+				case "yarn":
+				case "pnpm":
+					command = `exec ${packageManager} ts-git-hooks run ${kebabCaseHookName}`;
+					break;
+			}
+
+			const scriptContent = hookScriptContent(command);
 
 			// 2. Write the hook script file.
 			await fs.writeFile(hookPath, scriptContent, "utf-8");

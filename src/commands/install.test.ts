@@ -49,19 +49,21 @@ describe("install command", () => {
 		expect(fs.mkdir).toHaveBeenCalledWith(gitHooksDir, { recursive: true });
 	});
 
-	it("should write hook files with 'npm exec' when package manager is npm", async () => {
+	it("should write hook files with optimized script when package manager is npm", async () => {
 		// Act
 		await install();
 
 		// Assert
 		const preCommitPath = path.join(gitHooksDir, "pre-commit");
-		const expectedContent = expect.stringContaining(
-			"npm exec ts-git-hooks run",
-		);
+		const expectedContent = `if [ -x "./node_modules/.bin/ts-git-hooks" ]; then
+  exec ./node_modules/.bin/ts-git-hooks run pre-commit
+else
+  exec npm exec ts-git-hooks run pre-commit
+fi`;
 
 		expect(fs.writeFile).toHaveBeenCalledWith(
 			preCommitPath,
-			expectedContent,
+			expect.stringContaining(expectedContent),
 			"utf-8",
 		);
 	});
@@ -76,16 +78,17 @@ describe("install command", () => {
 		// Assert
 		const preCommitPath = path.join(gitHooksDir, "pre-commit");
 		const prePushPath = path.join(gitHooksDir, "pre-push");
-		const expectedContent = expect.stringContaining("yarn ts-git-hooks run");
+		const expectedContentPreCommit = "exec yarn ts-git-hooks run pre-commit";
+		const expectedContentPrePush = "exec yarn ts-git-hooks run pre-push";
 
 		expect(fs.writeFile).toHaveBeenCalledWith(
 			preCommitPath,
-			expectedContent,
+			expect.stringContaining(expectedContentPreCommit),
 			"utf-8",
 		);
 		expect(fs.writeFile).toHaveBeenCalledWith(
 			prePushPath,
-			expectedContent,
+			expect.stringContaining(expectedContentPrePush),
 			"utf-8",
 		);
 	});
@@ -100,16 +103,17 @@ describe("install command", () => {
 		// Assert
 		const preCommitPath = path.join(gitHooksDir, "pre-commit");
 		const prePushPath = path.join(gitHooksDir, "pre-push");
-		const expectedContent = expect.stringContaining("pnpm ts-git-hooks run");
+		const expectedContentPreCommit = "exec pnpm ts-git-hooks run pre-commit";
+		const expectedContentPrePush = "exec pnpm ts-git-hooks run pre-push";
 
 		expect(fs.writeFile).toHaveBeenCalledWith(
 			preCommitPath,
-			expectedContent,
+			expect.stringContaining(expectedContentPreCommit),
 			"utf-8",
 		);
 		expect(fs.writeFile).toHaveBeenCalledWith(
 			prePushPath,
-			expectedContent,
+			expect.stringContaining(expectedContentPrePush),
 			"utf-8",
 		);
 	});
