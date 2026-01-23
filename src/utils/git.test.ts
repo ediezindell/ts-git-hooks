@@ -106,7 +106,7 @@ describe("getStagedFiles", () => {
 	});
 
 	it("should return a list of staged files", async () => {
-		mockSpawn("file1.ts\nfile2.ts\n");
+		mockSpawn("file1.ts\0file2.ts\0");
 		const files = await getStagedFiles();
 		expect(files).toEqual(["file1.ts", "file2.ts"]);
 		expect(spawn).toHaveBeenCalledWith("git", [
@@ -114,6 +114,7 @@ describe("getStagedFiles", () => {
 			"--cached",
 			"--name-only",
 			"--diff-filter=ACMR",
+			"-z",
 		]);
 	});
 
@@ -121,5 +122,11 @@ describe("getStagedFiles", () => {
 		mockSpawn("");
 		const files = await getStagedFiles();
 		expect(files).toEqual([]);
+	});
+
+	it("should handle filenames with spaces correctly", async () => {
+		mockSpawn("file with spaces.ts\0file2.ts\0");
+		const files = await getStagedFiles();
+		expect(files).toEqual(["file with spaces.ts", "file2.ts"]);
 	});
 });

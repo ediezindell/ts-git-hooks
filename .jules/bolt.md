@@ -49,3 +49,7 @@
 ## 2026-01-22 - Optimize simple commands
 **Learning:** Commands in `npm run` scripts are often simple strings (e.g. "lint", "test"). Spawning a shell (`shell: true`) for these adds overhead. We can safely split simple commands (no quotes) and use `shell: false`.
 **Action:** Refactored `processCommand` to split simple commands into `{ script, args }`, enabling `shell: false` execution. Also fixed a bug where arguments in glob hooks were being treated as part of the script name in the optimized path.
+
+## 2026-01-23 - Use raw git output (-z)
+**Learning:** `git diff` output quotes filenames containing spaces or special characters, which requires complex parsing. Using `git diff -z` (null-terminated) avoids quoting and allows simple, fast splitting by `\0`, ensuring correctness for all filenames and removing parsing overhead.
+**Action:** Updated `getStagedFiles` in `src/utils/git.ts` to use `-z`.

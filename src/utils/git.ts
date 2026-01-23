@@ -48,14 +48,15 @@ function execGit(args: string[]): Promise<string> {
  */
 export async function getStagedFiles(): Promise<string[]> {
 	// Use --diff-filter=ACMR to exclude deleted files (D).
-	// This prevents running tools on files that no longer exist, which would cause errors.
+	// Use -z to avoid quoting filenames and handle special characters correctly.
 	const stdout = await execGit([
 		"diff",
 		"--cached",
 		"--name-only",
 		"--diff-filter=ACMR",
+		"-z",
 	]);
-	return stdout.split("\n").filter(Boolean);
+	return stdout.split("\0").filter(Boolean);
 }
 
 /**
