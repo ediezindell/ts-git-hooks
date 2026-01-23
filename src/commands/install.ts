@@ -13,9 +13,7 @@ const gitHooksDir = path.join(process.cwd(), ".git", "hooks");
  * This script will call the ts-git-hooks runner for the specific hook.
  * @param command The full command to execute.
  */
-const hookScriptContent = (
-	command: string,
-) => `#!/bin/sh
+const hookScriptContent = (command: string) => `#!/bin/sh
 # This hook was installed by ts-git-hooks
 # To uninstall, run 'npx ts-git-hooks uninstall'
 
@@ -49,20 +47,24 @@ export async function install() {
 			const kebabCaseHookName = camelToKebab(hookName) as KebabCaseGitHook;
 			const hookPath = path.join(gitHooksDir, kebabCaseHookName);
 
-			let command = "";
+			let fallbackCommand = "";
 			switch (packageManager) {
 				case "npm":
-					command = `if [ -x "./node_modules/.bin/ts-git-hooks" ]; then
-  exec ./node_modules/.bin/ts-git-hooks run ${kebabCaseHookName}
-else
-  exec npm exec ts-git-hooks run ${kebabCaseHookName}
-fi`;
+					fallbackCommand = `exec npm exec ts-git-hooks run ${kebabCaseHookName}`;
 					break;
 				case "yarn":
 				case "pnpm":
-					command = `exec ${packageManager} ts-git-hooks run ${kebabCaseHookName}`;
+					fallbackCommand = `exec ${packageManager} ts-git-hooks run ${kebabCaseHookName}`;
 					break;
 			}
+
+			// Optimization: Check for local binary to bypass package manager overhead (~300ms for npm exec).
+			// This optimization is now applied to all package managers as direct execution is always faster.
+			const command = `if [ -x "./node_modules/.bin/ts-git-hooks" ]; then
+  exec ./node_modules/.bin/ts-git-hooks run ${kebabCaseHookName}
+else
+  ${fallbackCommand}
+fi`;
 
 			const scriptContent = hookScriptContent(command);
 

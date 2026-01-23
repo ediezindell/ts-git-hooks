@@ -68,7 +68,7 @@ fi`;
 		);
 	});
 
-	it("should write hook files with 'yarn' when package manager is yarn", async () => {
+	it("should write hook files with optimized script when package manager is yarn", async () => {
 		// Arrange
 		vi.mocked(getPackageManager).mockReturnValue("yarn");
 
@@ -78,8 +78,18 @@ fi`;
 		// Assert
 		const preCommitPath = path.join(gitHooksDir, "pre-commit");
 		const prePushPath = path.join(gitHooksDir, "pre-push");
-		const expectedContentPreCommit = "exec yarn ts-git-hooks run pre-commit";
-		const expectedContentPrePush = "exec yarn ts-git-hooks run pre-push";
+
+		const expectedContentPreCommit = `if [ -x "./node_modules/.bin/ts-git-hooks" ]; then
+  exec ./node_modules/.bin/ts-git-hooks run pre-commit
+else
+  exec yarn ts-git-hooks run pre-commit
+fi`;
+
+		const expectedContentPrePush = `if [ -x "./node_modules/.bin/ts-git-hooks" ]; then
+  exec ./node_modules/.bin/ts-git-hooks run pre-push
+else
+  exec yarn ts-git-hooks run pre-push
+fi`;
 
 		expect(fs.writeFile).toHaveBeenCalledWith(
 			preCommitPath,
@@ -93,7 +103,7 @@ fi`;
 		);
 	});
 
-	it("should write hook files with 'pnpm' when package manager is pnpm", async () => {
+	it("should write hook files with optimized script when package manager is pnpm", async () => {
 		// Arrange
 		vi.mocked(getPackageManager).mockReturnValue("pnpm");
 
@@ -103,8 +113,18 @@ fi`;
 		// Assert
 		const preCommitPath = path.join(gitHooksDir, "pre-commit");
 		const prePushPath = path.join(gitHooksDir, "pre-push");
-		const expectedContentPreCommit = "exec pnpm ts-git-hooks run pre-commit";
-		const expectedContentPrePush = "exec pnpm ts-git-hooks run pre-push";
+
+		const expectedContentPreCommit = `if [ -x "./node_modules/.bin/ts-git-hooks" ]; then
+  exec ./node_modules/.bin/ts-git-hooks run pre-commit
+else
+  exec pnpm ts-git-hooks run pre-commit
+fi`;
+
+		const expectedContentPrePush = `if [ -x "./node_modules/.bin/ts-git-hooks" ]; then
+  exec ./node_modules/.bin/ts-git-hooks run pre-push
+else
+  exec pnpm ts-git-hooks run pre-push
+fi`;
 
 		expect(fs.writeFile).toHaveBeenCalledWith(
 			preCommitPath,
