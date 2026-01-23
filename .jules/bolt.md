@@ -61,3 +61,7 @@
 ## 2026-01-23 - Batch micromatch calls and cache package manager
 **Learning:** Calling `micromatch` for every glob pattern in the config is inefficient, especially with many staged files. `micromatch` is much faster when matching against an array of patterns in a single call. Also, repeated access to `process.env` for package manager detection adds unnecessary overhead.
 **Action:** Refactored `resolveScriptsToRun` to group patterns by command and perform a single `micromatch` call per command group. Memoized the result of `getPackageManager` to avoid repeated environment variable lookups.
+
+## 2026-01-23 - [Optimization] Micromatch filtering with pre-filtered subset
+**Learning:** In projects with many staged files but few matching hook patterns, calling `micromatch` repeatedly on the full list of staged files is inefficient. Pre-filtering the staged files into a `matchedFiles` subset and then performing specific pattern matching on that subset significantly reduces the workload for subsequent `micromatch` calls.
+**Action:** Always check if a large collection can be narrowed down once before performing multiple specific filters/matches on it.

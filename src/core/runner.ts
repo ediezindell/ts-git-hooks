@@ -26,17 +26,6 @@ import { loadConfig } from "./config";
 export type Executable = string | { script: string; args: string[] };
 
 /**
- * Safely gets the package manager, defaulting to "npm" if detection fails.
- */
-function safeGetPackageManager(): string {
-	try {
-		return getPackageManager();
-	} catch {
-		return "npm";
-	}
-}
-
-/**
  * Processes a command, resolving it to a final Executable.
  * @param command The command to process.
  * @param files The list of files to pass to the command.
@@ -146,6 +135,15 @@ function areCommandsEqual(a: Command<string>, b: Command<string>): boolean {
 	return false;
 }
 
+// Cache for the micromatch module to avoid repeated dynamic imports.
+let micromatch:
+	| ((
+			list: string[],
+			patterns: string | string[],
+			options?: unknown,
+	  ) => string[])
+	| undefined;
+
 /**
  * Resolves the scripts to run for a given hook configuration.
  * @param hookConfig The configuration for the specific git hook.
@@ -191,8 +189,10 @@ export async function resolveScriptsToRun(
 
 	if (isGlob) {
 		if (stagedFiles && stagedFiles.length > 0) {
-			// Optimization: Lazy load micromatch only when needed
-			const { default: micromatch } = await import("micromatch");
+			// Optimization: Lazy load and cache micromatch only when needed
+			if (!micromatch) {
+				micromatch = (await import("micromatch")).default;
+			}
 
 			const patterns = Object.keys(hookConfig);
 			// 1. Get all matched files for the pre-commit optimization in a single pass
@@ -228,7 +228,10 @@ export async function resolveScriptsToRun(
 				// 3. Run micromatch for each unique command group
 				for (const command of uniqueCommands) {
 					const patternsForCommand = commandToPatterns.get(command) ?? [];
-					const matchingFiles = micromatch(stagedFiles, patternsForCommand, {
+					// Optimization: Use matchedFiles instead of stagedFiles.
+					// Since matchedFiles is the subset of stagedFiles that matched ANY pattern,
+					// any file matching patternsForCommand MUST be in matchedFiles.
+					const matchingFiles = micromatch(matchedFiles, patternsForCommand, {
 						matchBase: true,
 					});
 
@@ -266,7 +269,7 @@ function executeScript(executable: Executable): Promise<void> {
 				: `${executable.script} ${executable.args.join(" ")}`;
 		logger.info(`Running script: ${displayScript}`);
 
-		const packageManager = safeGetPackageManager();
+		const packageManager = getPackageManager();
 		let child: ChildProcess;
 
 		if (typeof executable === "string") {
@@ -304,11 +307,6 @@ function executeScript(executable: Executable): Promise<void> {
 	});
 }
 
-/**
- * Runs the configured scripts for a given git hook.
- * @param hookName The name of the git hook being triggered.
- * @returns A promise that resolves to `true` if the hook succeeds, `false` otherwise.
- */
 // Optimization: A Set provides faster O(1) lookups compared to Array.prototype.includes O(n).
 const hooksSkippingStash: Set<string> = new Set([
 	"commit-msg",

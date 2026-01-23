@@ -17,9 +17,8 @@ export const getPackageManager = (): PackageManager => {
 	const userAgent = process.env.npm_config_user_agent;
 
 	if (!userAgent) {
-		throw new Error(
-			"Could not determine package manager. Please run this command through npm, yarn, or pnpm.",
-		);
+		memoizedPackageManager = "npm";
+		return memoizedPackageManager;
 	}
 
 	if (userAgent.startsWith("yarn")) {

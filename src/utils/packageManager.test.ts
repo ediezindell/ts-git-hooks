@@ -30,13 +30,11 @@ describe("getPackageManager", () => {
 		expect(getPackageManager()).toBe("pnpm");
 	});
 
-	it("should throw an error when user agent is not defined", () => {
+	it("should return 'npm' when user agent is not defined", () => {
 		// Arrange
 		vi.stubEnv("npm_config_user_agent", "");
 
 		// Act & Assert
-		expect(() => getPackageManager()).toThrow(
-			"Could not determine package manager.",
-		);
+		expect(getPackageManager()).toBe("npm");
 	});
 });

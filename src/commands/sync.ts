@@ -6,7 +6,7 @@ import { generateScriptTypes } from "../core/type-generator";
 export async function sync() {
 	try {
 		await generateScriptTypes();
-	} catch (error) {
+	} catch (_error) {
 		// The core function already logs the specific error.
 		// We catch it here to prevent the process from exiting with a non-zero code
 		// unless we want it to. For now, just absorb it.

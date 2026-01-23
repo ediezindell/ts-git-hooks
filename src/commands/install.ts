@@ -29,7 +29,9 @@ ${command} ${hook}
 export async function install() {
 	const config = await loadConfig();
 	if (!config || Object.keys(config).length === 0) {
-		logger.warn("Configuration file not found or is empty. No hooks to install.");
+		logger.warn(
+			"Configuration file not found or is empty. No hooks to install.",
+		);
 		return;
 	}
 
