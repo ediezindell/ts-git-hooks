@@ -90,7 +90,8 @@ export async function stashPop(): Promise<void> {
 }
 
 /**
- * Gets a list of files that have been modified or created in the working directory.
+ * Gets a list of files that have been modified in the working directory (excluding untracked files).
+ * Uses `git diff` which is faster than `git status` and avoids staging untracked files.
  * @returns A promise that resolves to an array of changed file paths.
  */
 export async function getChangedFiles(files?: string[]): Promise<string[]> {
@@ -98,42 +99,13 @@ export async function getChangedFiles(files?: string[]): Promise<string[]> {
 		return [];
 	}
 
-	const args = ["status", "--porcelain", "-z"];
+	const args = ["diff", "--name-only", "--diff-filter=ACMR", "-z"];
 	if (files) {
 		args.push("--", ...files);
 	}
 
 	const stdout = await execGit(args);
-	if (!stdout) {
-		return [];
-	}
-
-	const changedFiles: string[] = [];
-	const parts = stdout.split("\0");
-
-	for (let i = 0; i < parts.length; i++) {
-		const line = parts[i];
-		if (!line) continue;
-
-		const prefix = line.slice(0, 2);
-		const path = line.slice(3);
-
-		// Matches modified (M), added (A), or untracked (??) files.
-		// Exclude deleted files (D)
-		const isDeleted = prefix === " D" || prefix === "D ";
-		const hasChange = prefix.trim().length > 0;
-
-		if (hasChange && !isDeleted) {
-			changedFiles.push(path);
-		}
-
-		// Renames (R) and Copies (C) in porcelain -z format are followed by the old path
-		if (prefix.startsWith("R") || prefix.startsWith("C")) {
-			i++;
-		}
-	}
-
-	return changedFiles;
+	return stdout.split("\0").filter(Boolean);
 }
 
 /**
