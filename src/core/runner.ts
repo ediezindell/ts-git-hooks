@@ -130,10 +130,13 @@ function shouldFetchStagedFiles(hookConfig: HookConfig): boolean {
 /**
  * Checks if two commands are equal.
  * Equality is defined as:
- * - Both are identical strings.
+ * - Both are identical references or identical strings.
  * - Both are tuples with identical script name and function reference.
  */
 function areCommandsEqual(a: Command<string>, b: Command<string>): boolean {
+	if (a === b) {
+		return true;
+	}
 	if (typeof a === "string" && typeof b === "string") {
 		return a === b;
 	}
@@ -163,7 +166,8 @@ export async function resolveScriptsToRun(
 		commands: Command<string>[],
 		files: string[],
 	) => {
-		for (const command of commands) {
+		for (let i = 0; i < commands.length; i++) {
+			const command = commands[i];
 			let batch = batchedCommands.find((b) =>
 				areCommandsEqual(b.command, command),
 			);
@@ -171,8 +175,9 @@ export async function resolveScriptsToRun(
 				batch = { command, files: new Set() };
 				batchedCommands.push(batch);
 			}
-			for (const file of files) {
-				batch.files.add(file);
+			const batchFiles = batch.files;
+			for (let j = 0; j < files.length; j++) {
+				batchFiles.add(files[j]);
 			}
 		}
 	};
@@ -185,28 +190,54 @@ export async function resolveScriptsToRun(
 	let matchedFiles: string[] | null = null;
 
 	if (isGlob) {
-		const matchedFilesSet = new Set<string>();
-
 		if (stagedFiles && stagedFiles.length > 0) {
 			// Optimization: Lazy load micromatch only when needed
 			const { default: micromatch } = await import("micromatch");
 
-			for (const [globPattern, script] of Object.entries(hookConfig)) {
-				const matchingFiles = micromatch(stagedFiles, globPattern, {
-					matchBase: true,
-				});
+			const patterns = Object.keys(hookConfig);
+			// 1. Get all matched files for the pre-commit optimization in a single pass
+			matchedFiles = micromatch(stagedFiles, patterns, {
+				matchBase: true,
+			});
 
-				for (const file of matchingFiles) {
-					matchedFilesSet.add(file);
+			if (matchedFiles.length > 0) {
+				// 2. Group patterns by command to minimize micromatch calls
+				const commandToPatterns = new Map<Command<string>, string[]>();
+				const uniqueCommands: Command<string>[] = [];
+
+				for (const [pattern, script] of Object.entries(hookConfig)) {
+					const commands = getCommands(script);
+					for (const command of commands) {
+						let existingCommand = uniqueCommands.find((c) =>
+							areCommandsEqual(c, command),
+						);
+						if (!existingCommand) {
+							existingCommand = command;
+							uniqueCommands.push(existingCommand);
+						}
+
+						let patternList = commandToPatterns.get(existingCommand);
+						if (!patternList) {
+							patternList = [];
+							commandToPatterns.set(existingCommand, patternList);
+						}
+						patternList.push(pattern);
+					}
 				}
 
-				if (matchingFiles.length > 0) {
-					const commandsToProcess = getCommands(script);
-					processListOfCommands(commandsToProcess, matchingFiles);
+				// 3. Run micromatch for each unique command group
+				for (const command of uniqueCommands) {
+					const patternsForCommand = commandToPatterns.get(command) ?? [];
+					const matchingFiles = micromatch(stagedFiles, patternsForCommand, {
+						matchBase: true,
+					});
+
+					if (matchingFiles.length > 0) {
+						processListOfCommands([command], matchingFiles);
+					}
 				}
 			}
 		}
-		matchedFiles = Array.from(matchedFilesSet);
 	}
 	// Case 2: Unconditional configuration
 	else {

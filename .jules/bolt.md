@@ -57,3 +57,7 @@
 ## 2026-01-23 - Use Set for O(1) lookups
 **Learning:** Using `Array.prototype.includes()` for checking if a hook should be skipped has a time complexity of O(n). For a small, fixed list, this is negligible, but using a `Set` provides a more performant O(1) lookup.
 **Action:** Replaced the `hooksSkippingStash` array with a `Set` in `src/core/runner.ts` for faster lookups.
+
+## 2026-01-23 - Batch micromatch calls and cache package manager
+**Learning:** Calling `micromatch` for every glob pattern in the config is inefficient, especially with many staged files. `micromatch` is much faster when matching against an array of patterns in a single call. Also, repeated access to `process.env` for package manager detection adds unnecessary overhead.
+**Action:** Refactored `resolveScriptsToRun` to group patterns by command and perform a single `micromatch` call per command group. Memoized the result of `getPackageManager` to avoid repeated environment variable lookups.

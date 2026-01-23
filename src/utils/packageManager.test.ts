@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
-import { getPackageManager } from "./packageManager";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { _resetPackageManager, getPackageManager } from "./packageManager";
 
 describe("getPackageManager", () => {
+	beforeEach(() => {
+		_resetPackageManager();
+	});
+
 	it("should return 'npm' when user agent starts with npm", () => {
 		// Arrange
 		vi.stubEnv("npm_config_user_agent", "npm/8.1.2 node/v16.13.1 linux x64");
