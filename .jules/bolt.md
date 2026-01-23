@@ -69,3 +69,7 @@
 ## 2026-01-23 - Use git diff for modified files
 **Learning:** `git status --porcelain` scans for untracked files and calculates index-vs-HEAD diffs, which is slower than `git diff` when we only care about modified files in the working directory (relative to index). Also, `git status` output parsing is complex and error-prone (including handling untracked files which we want to ignore).
 **Action:** Replaced `git status` with `git diff --name-only --diff-filter=ACMR` in `getChangedFiles`. This improves performance on large/dirty repos and prevents accidental staging of untracked files.
+
+## 2026-01-23 - Bypass npm exec for hooks
+**Learning:** `npm exec` (or `npx`) adds significant overhead (e.g., ~350ms) to hook execution. Checking for the local binary `./node_modules/.bin/ts-git-hooks` and executing it directly (if present) bypasses this overhead, significantly speeding up hooks.
+**Action:** Updated `install` command to generate a shell script that checks for the binary and executes it directly, falling back to `npm exec` only if needed.
