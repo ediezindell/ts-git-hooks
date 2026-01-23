@@ -65,3 +65,7 @@
 ## 2026-01-23 - [Optimization] Micromatch filtering with pre-filtered subset
 **Learning:** In projects with many staged files but few matching hook patterns, calling `micromatch` repeatedly on the full list of staged files is inefficient. Pre-filtering the staged files into a `matchedFiles` subset and then performing specific pattern matching on that subset significantly reduces the workload for subsequent `micromatch` calls.
 **Action:** Always check if a large collection can be narrowed down once before performing multiple specific filters/matches on it.
+
+## 2026-01-23 - Use git diff for modified files
+**Learning:** `git status --porcelain` scans for untracked files and calculates index-vs-HEAD diffs, which is slower than `git diff` when we only care about modified files in the working directory (relative to index). Also, `git status` output parsing is complex and error-prone (including handling untracked files which we want to ignore).
+**Action:** Replaced `git status` with `git diff --name-only --diff-filter=ACMR` in `getChangedFiles`. This improves performance on large/dirty repos and prevents accidental staging of untracked files.

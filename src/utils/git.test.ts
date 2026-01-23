@@ -53,30 +53,30 @@ describe("getChangedFiles", () => {
 		vi.resetAllMocks();
 	});
 
-	it("should exclude files staged for deletion (D )", async () => {
-		mockSpawn("D  deleted-staged.txt\0M  modified.txt\0");
-
+	it("should call git diff with correct arguments", async () => {
+		mockSpawn("file1.txt\0");
 		const files = await getChangedFiles();
-		expect(files).toEqual(["modified.txt"]);
-		expect(spawn).toHaveBeenCalledWith("git", ["status", "--porcelain", "-z"]);
+		expect(spawn).toHaveBeenCalledWith("git", [
+			"diff",
+			"--name-only",
+			"--diff-filter=ACMR",
+			"-z",
+		]);
+		expect(files).toEqual(["file1.txt"]);
 	});
 
-	it("should exclude files deleted in work tree ( D)", async () => {
-		mockSpawn(" D deleted-unstaged.txt\0M  modified.txt\0");
-		const files = await getChangedFiles();
-		expect(files).toEqual(["modified.txt"]);
-	});
-
-	it("should include untracked files (??)", async () => {
-		mockSpawn("?? untracked.txt\0");
-		const files = await getChangedFiles();
-		expect(files).toEqual(["untracked.txt"]);
-	});
-
-	it("should handle renamed files (R )", async () => {
-		mockSpawn("R  new.txt\0old.txt\0");
-		const files = await getChangedFiles();
-		expect(files).toEqual(["new.txt"]);
+	it("should pass file arguments to git diff", async () => {
+		mockSpawn("file1.txt\0");
+		const files = await getChangedFiles(["file1.txt", "file2.txt"]);
+		expect(spawn).toHaveBeenCalledWith("git", [
+			"diff",
+			"--name-only",
+			"--diff-filter=ACMR",
+			"-z",
+			"--",
+			"file1.txt",
+			"file2.txt",
+		]);
 	});
 
 	it("should correctly handle multi-byte characters split across chunks", async () => {
@@ -84,7 +84,7 @@ describe("getChangedFiles", () => {
 		// We split it so E2 is in first chunk, 82 AC is in second
 		const euroBuffer = Buffer.from("€");
 		const chunk1 = Buffer.concat([
-			Buffer.from("?? file_with_"),
+			Buffer.from("file_with_"),
 			euroBuffer.subarray(0, 1),
 		]);
 		const chunk2 = Buffer.concat([

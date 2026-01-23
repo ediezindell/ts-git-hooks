@@ -14,6 +14,7 @@ import {
 	stashPop,
 	stashPushKeepIndex,
 } from "../utils/git";
+import type { Options } from "micromatch";
 import { logger } from "../utils/logger";
 import { getPackageManager } from "../utils/packageManager";
 import { kebabToCamel } from "../utils/string";
@@ -140,7 +141,7 @@ let micromatch:
 	| ((
 			list: string[],
 			patterns: string | string[],
-			options?: unknown,
+			options?: Options,
 	  ) => string[])
 	| undefined;
 
@@ -191,12 +192,14 @@ export async function resolveScriptsToRun(
 		if (stagedFiles && stagedFiles.length > 0) {
 			// Optimization: Lazy load and cache micromatch only when needed
 			if (!micromatch) {
+				// @ts-ignore: Handle default export or CJS export
 				micromatch = (await import("micromatch")).default;
 			}
+			const mm = micromatch!;
 
 			const patterns = Object.keys(hookConfig);
 			// 1. Get all matched files for the pre-commit optimization in a single pass
-			matchedFiles = micromatch(stagedFiles, patterns, {
+			matchedFiles = mm(stagedFiles, patterns, {
 				matchBase: true,
 			});
 
@@ -231,7 +234,7 @@ export async function resolveScriptsToRun(
 					// Optimization: Use matchedFiles instead of stagedFiles.
 					// Since matchedFiles is the subset of stagedFiles that matched ANY pattern,
 					// any file matching patternsForCommand MUST be in matchedFiles.
-					const matchingFiles = micromatch(matchedFiles, patternsForCommand, {
+					const matchingFiles = mm(matchedFiles, patternsForCommand, {
 						matchBase: true,
 					});
 
