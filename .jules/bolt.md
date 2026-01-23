@@ -53,3 +53,7 @@
 ## 2026-01-23 - Use raw git output (-z)
 **Learning:** `git diff` output quotes filenames containing spaces or special characters, which requires complex parsing. Using `git diff -z` (null-terminated) avoids quoting and allows simple, fast splitting by `\0`, ensuring correctness for all filenames and removing parsing overhead.
 **Action:** Updated `getStagedFiles` in `src/utils/git.ts` to use `-z`.
+
+## 2026-01-23 - Use Set for O(1) lookups
+**Learning:** Using `Array.prototype.includes()` for checking if a hook should be skipped has a time complexity of O(n). For a small, fixed list, this is negligible, but using a `Set` provides a more performant O(1) lookup.
+**Action:** Replaced the `hooksSkippingStash` array with a `Set` in `src/core/runner.ts` for faster lookups.

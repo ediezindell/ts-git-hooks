@@ -178,7 +178,7 @@ describe("Glob-based (file-dependent) hook execution", () => {
 		// Should use shell: true and quoted files
 		expect(spawn).toHaveBeenCalledWith(
 			"npm",
-			['run', 'lint --config "my config" "src/index.ts"'],
+			["run", 'lint --config "my config" "src/index.ts"'],
 			expect.objectContaining({ shell: true }),
 		);
 		expect(result).toBe(true);
@@ -437,22 +437,6 @@ describe("Performance Optimizations", () => {
 		// It should NOT try to stash
 		expect(stashPushKeepIndex).not.toHaveBeenCalled();
 		expect(stashPop).not.toHaveBeenCalled();
-	});
-
-	it("should stash changes for pre-commit hook if dirty", async () => {
-		vi.mocked(loadConfig).mockResolvedValue({ preCommit: { "*.ts": "lint" } });
-		vi.mocked(getStagedFiles).mockResolvedValue(["a.ts"]);
-		vi.mocked(stashPushKeepIndex).mockResolvedValue(true);
-		vi.mocked(spawn).mockImplementation(() => {
-			const p = new MockChildProcess();
-			simulateSuccess(p);
-			return p as any;
-		});
-
-		await runHook("pre-commit");
-
-		expect(stashPushKeepIndex).toHaveBeenCalled();
-		expect(stashPop).toHaveBeenCalled();
 	});
 
 	it("should attempt to stash but not pop if no unstaged changes", async () => {

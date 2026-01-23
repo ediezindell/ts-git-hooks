@@ -278,6 +278,21 @@ function executeScript(executable: Executable): Promise<void> {
  * @param hookName The name of the git hook being triggered.
  * @returns A promise that resolves to `true` if the hook succeeds, `false` otherwise.
  */
+// Optimization: A Set provides faster O(1) lookups compared to Array.prototype.includes O(n).
+const hooksSkippingStash: Set<string> = new Set([
+	"commit-msg",
+	"prepare-commit-msg",
+	"post-commit",
+	"post-checkout",
+	"post-merge",
+	"post-rewrite",
+]);
+
+/**
+ * Runs the configured scripts for a given git hook.
+ * @param hookName The name of the git hook being triggered.
+ * @returns A promise that resolves to `true` if the hook succeeds, `false` otherwise.
+ */
 export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	const config = await loadConfig();
 	if (!config) {
@@ -312,18 +327,9 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	// Optimization: Skip stashing for hooks that don't need a clean working directory.
 	// Hooks like commit-msg only check metadata and don't touch project files.
 	// Post-hooks run after the action, so stashing is unnecessary overhead.
-	const hooksSkippingStash: string[] = [
-		"commit-msg",
-		"prepare-commit-msg",
-		"post-commit",
-		"post-checkout",
-		"post-merge",
-		"post-rewrite",
-	];
-
 	try {
 		// 1. Stash unstaged changes if they exist
-		if (!hooksSkippingStash.includes(hookName)) {
+		if (!hooksSkippingStash.has(hookName)) {
 			stashCreated = await stashPushKeepIndex();
 			if (stashCreated) {
 				logger.info("Stashed unstaged changes.");
