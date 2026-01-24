@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { generateScriptTypes } from "../core/type-generator";
+import { fileExists } from "../utils/fs";
 import { logger } from "../utils/logger";
 
 const configFileName = "git-hooks.config.ts";
@@ -20,20 +21,6 @@ export const config: TSGitHookConfig = {
   'pre-push': 'build',
 };
 `;
-
-/**
- * Checks if a file exists.
- * @param filePath The path to the file.
- * @returns True if the file exists, false otherwise.
- */
-async function fileExists(filePath: string): Promise<boolean> {
-	try {
-		await fs.access(filePath);
-		return true;
-	} catch {
-		return false;
-	}
-}
 
 /**
  * Initializes the project by creating a config file and generating types.

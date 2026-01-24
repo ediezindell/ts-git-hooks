@@ -2,22 +2,11 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../core/config";
 import type { KebabCaseGitHook } from "../types";
+import { fileExists } from "../utils/fs";
 import { logger } from "../utils/logger";
 
 const gitHooksDir = path.join(process.cwd(), ".git", "hooks");
 const hookIdentifier = "# This hook was installed by ts-git-hooks";
-
-/**
- * Checks if a file exists at the given path.
- */
-async function fileExists(filePath: string): Promise<boolean> {
-	try {
-		await fs.access(filePath);
-		return true;
-	} catch {
-		return false;
-	}
-}
 
 /**
  * Uninstalls git hooks managed by ts-git-hooks.
