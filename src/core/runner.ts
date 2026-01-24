@@ -39,6 +39,27 @@ function isCommandTuple(value: unknown): value is [string, ArgsFn] {
 }
 
 /**
+ * Parses a simple command string into a split Executable object.
+ * Appends extra arguments (e.g. file paths) if provided.
+ */
+function parseSimpleCommand(
+	command: string,
+	extraArgs: string[] = [],
+): Executable {
+	// Optimization: Split simple commands to avoid shell spawn.
+	// This works for "test", "lint --fix", etc.
+	const parts = command.split(/\s+/).filter(Boolean);
+	const script = parts[0];
+	const args = parts.slice(1);
+
+	if (extraArgs.length > 0) {
+		args.push(...extraArgs);
+	}
+
+	return { script, args };
+}
+
+/**
  * Processes a command, resolving it to a final Executable.
  * @param command The command to process.
  * @param files The list of files to pass to the command.
@@ -55,21 +76,12 @@ function processCommand(
 		return formatArguments(files, script);
 	}
 
-	const commandString = String(command);
+	// At this point, command is definitely a string (not a tuple).
+	const commandString = command as string;
 	const hasQuotes = commandString.includes('"') || commandString.includes("'");
 
 	if (!hasQuotes) {
-		// Optimization: Split simple commands to avoid shell spawn.
-		// This works for "test", "lint --fix", etc.
-		const parts = commandString.split(/\s+/).filter(Boolean);
-		const script = parts[0];
-		const args = parts.slice(1);
-
-		if (isGlob && files.length > 0) {
-			args.push(...files);
-		}
-
-		return { script, args };
+		return parseSimpleCommand(commandString, isGlob ? files : []);
 	}
 
 	// For glob-based hooks with quotes, we must construct a single string
