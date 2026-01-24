@@ -76,7 +76,9 @@ export async function stashPushKeepIndex(): Promise<boolean> {
 		"--keep-index",
 		"--include-untracked",
 	]);
-	return !stdout.includes("No local changes to save");
+	// Git outputs "No local changes to save" when no stash is created
+	const noChangesMessage = "No local changes to save";
+	return !stdout.includes(noChangesMessage);
 }
 
 /**
