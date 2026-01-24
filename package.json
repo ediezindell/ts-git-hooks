@@ -8,7 +8,7 @@
     "ts-git-hooks": "dist/cli/index.js"
   },
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest",
     "lint": "biome lint .",
     "format": "biome format --write src",
     "check": "biome check --write src",
