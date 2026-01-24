@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import type { Options } from "micromatch";
 import type {
 	ArgsFn,
 	CamelCaseGitHook,
@@ -14,7 +15,6 @@ import {
 	stashPop,
 	stashPushKeepIndex,
 } from "../utils/git";
-import type { Options } from "micromatch";
 import { logger } from "../utils/logger";
 import { getPackageManager } from "../utils/packageManager";
 import { kebabToCamel } from "../utils/string";
@@ -32,14 +32,23 @@ export type Executable = string | { script: string; args: string[] };
  * @param files The list of files to pass to the command.
  * @returns The resolved Executable.
  */
+function isCommandTuple(value: unknown): value is [string, ArgsFn] {
+	return (
+		Array.isArray(value) &&
+		value.length === 2 &&
+		typeof value[0] === "string" &&
+		typeof value[1] === "function"
+	);
+}
+
 function processCommand(
 	command: Command<string>,
 	files: string[],
 	isGlob: boolean,
 ): Executable {
-	if (Array.isArray(command) && typeof command[1] === "function") {
+	if (isCommandTuple(command)) {
 		// Command is a tuple: [script, formatArguments]
-		const [script, formatArguments] = command as [string, ArgsFn];
+		const [script, formatArguments] = command;
 		return formatArguments(files, script);
 	}
 
@@ -79,16 +88,10 @@ function processCommand(
  * @returns An array of commands.
  */
 const getCommands = (script: Script<string>): Command<string>[] => {
+	if (isCommandTuple(script)) {
+		return [script];
+	}
 	if (Array.isArray(script)) {
-		// Check if it's a command tuple like [string, ArgsFn]
-		if (
-			script.length === 2 &&
-			typeof script[0] === "string" &&
-			typeof script[1] === "function"
-		) {
-			return [script as Command<string>];
-		}
-		// Otherwise, it's an array of commands
 		return script as Command<string>[];
 	}
 	// It's a single command string
@@ -112,9 +115,7 @@ function shouldFetchStagedFiles(hookConfig: HookConfig): boolean {
 
 	// For simple hooks, check if any command uses a custom argument function.
 	const commands = getCommands(hookConfig);
-	return commands.some(
-		(cmd) => Array.isArray(cmd) && typeof cmd[1] === "function",
-	);
+	return commands.some(isCommandTuple);
 }
 
 /**
@@ -130,7 +131,7 @@ function areCommandsEqual(a: Command<string>, b: Command<string>): boolean {
 	if (typeof a === "string" && typeof b === "string") {
 		return a === b;
 	}
-	if (Array.isArray(a) && Array.isArray(b)) {
+	if (isCommandTuple(a) && isCommandTuple(b)) {
 		return a[0] === b[0] && a[1] === b[1];
 	}
 	return false;
@@ -192,7 +193,7 @@ export async function resolveScriptsToRun(
 		if (stagedFiles && stagedFiles.length > 0) {
 			// Optimization: Lazy load and cache micromatch only when needed
 			if (!micromatch) {
-				// @ts-ignore: Handle default export or CJS export
+				// @ts-expect-error: Handle default export or CJS export
 				micromatch = (await import("micromatch")).default;
 			}
 			const mm = micromatch!;
