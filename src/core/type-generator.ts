@@ -33,8 +33,13 @@ export async function generateScriptTypes(): Promise<void> {
 		logger.success(
 			`Type definitions for npm scripts have been updated in '${typeDefFileName}'.`,
 		);
-	} catch (error: any) {
-		if (error.code === "ENOENT") {
+	} catch (error: unknown) {
+		if (
+			typeof error === "object" &&
+			error !== null &&
+			"code" in error &&
+			(error as { code: string }).code === "ENOENT"
+		) {
 			logger.error("Error: package.json not found in the current directory.");
 			// Re-throw a simpler error to make testing easier
 			throw new Error("package.json not found");

@@ -59,21 +59,6 @@ function parseSimpleCommand(
 	return { script, args };
 }
 
-/**
- * Processes a command, resolving it to a final Executable.
- * @param command The command to process.
- * @param files The list of files to pass to the command.
- * @returns The resolved Executable.
- */
-function isCommandTuple(value: unknown): value is [string, ArgsFn] {
-	return (
-		Array.isArray(value) &&
-		value.length === 2 &&
-		typeof value[0] === "string" &&
-		typeof value[1] === "function"
-	);
-}
-
 function processCommand(
 	command: Command<string>,
 	files: string[],
@@ -210,7 +195,10 @@ export async function resolveScriptsToRun(
 			if (!micromatch) {
 				micromatch = (await import("micromatch")).default;
 			}
-			const mm = micromatch!;
+			if (!micromatch) {
+				throw new Error("Failed to load micromatch");
+			}
+			const mm = micromatch;
 
 			const patterns = Object.keys(hookConfig);
 			// 1. Get all matched files for the pre-commit optimization in a single pass
