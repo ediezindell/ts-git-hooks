@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
 import { logger } from "./logger";
+import { parseNullSeparatedList } from "./string";
 
 /**
  * Promisified version of `spawn` for running git commands.
@@ -57,7 +58,7 @@ export async function getStagedFiles(): Promise<string[]> {
 		"--diff-filter=ACMR",
 		"-z",
 	]);
-	return stdout.split("\0").filter(Boolean);
+	return parseNullSeparatedList(stdout);
 }
 
 /**
@@ -106,7 +107,7 @@ export async function getChangedFiles(files?: string[]): Promise<string[]> {
 	}
 
 	const stdout = await execGit(args);
-	return stdout.split("\0").filter(Boolean);
+	return parseNullSeparatedList(stdout);
 }
 
 /**
