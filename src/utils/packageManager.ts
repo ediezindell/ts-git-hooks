@@ -14,12 +14,7 @@ export const getPackageManager = (): PackageManager => {
 		return memoizedPackageManager;
 	}
 
-	const userAgent = process.env.npm_config_user_agent;
-
-	if (!userAgent) {
-		memoizedPackageManager = "npm";
-		return memoizedPackageManager;
-	}
+	const userAgent = process.env.npm_config_user_agent || "";
 
 	if (userAgent.startsWith("yarn")) {
 		memoizedPackageManager = "yarn";
