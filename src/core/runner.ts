@@ -175,8 +175,7 @@ export async function resolveScriptsToRun(
 		commands: Command<string>[],
 		files: string[],
 	) => {
-		for (let i = 0; i < commands.length; i++) {
-			const command = commands[i];
+		for (const command of commands) {
 			let batch = batchedCommands.find((b) =>
 				areCommandsEqual(b.command, command),
 			);
@@ -184,10 +183,10 @@ export async function resolveScriptsToRun(
 				batch = { command, files: new Set() };
 				batchedCommands.push(batch);
 			}
-			const batchFiles = batch.files;
-			for (let j = 0; j < files.length; j++) {
-				batchFiles.add(files[j]);
-			}
+			// Add all files to the batch's file set
+			files.forEach((file) => {
+				batch.files.add(file);
+			});
 		}
 	};
 
