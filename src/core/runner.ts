@@ -65,6 +65,15 @@ function parseSimpleCommand(
  * @param files The list of files to pass to the command.
  * @returns The resolved Executable.
  */
+function isCommandTuple(value: unknown): value is [string, ArgsFn] {
+	return (
+		Array.isArray(value) &&
+		value.length === 2 &&
+		typeof value[0] === "string" &&
+		typeof value[1] === "function"
+	);
+}
+
 function processCommand(
 	command: Command<string>,
 	files: string[],
