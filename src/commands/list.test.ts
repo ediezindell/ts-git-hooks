@@ -3,7 +3,13 @@ import { loadConfig } from "../core/config";
 import { list } from "./list";
 
 // Mock dependencies
-vi.mock("../core/config");
+vi.mock("../core/config", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../core/config")>();
+	return {
+		...actual,
+		loadConfig: vi.fn(),
+	};
+});
 
 describe("list command", () => {
 	let logSpy: vi.SpyInstance;

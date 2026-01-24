@@ -14,7 +14,13 @@ import { loadConfig } from "./config";
 import { resolveScriptsToRun, runHook } from "./runner";
 
 // Mock dependencies
-vi.mock("./config");
+vi.mock("./config", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("./config")>();
+	return {
+		...actual,
+		loadConfig: vi.fn(),
+	};
+});
 vi.mock("../utils/git");
 vi.mock("../utils/packageManager");
 vi.mock("node:child_process");
