@@ -18,13 +18,46 @@ import {
 import { logger } from "../utils/logger";
 import { getPackageManager } from "../utils/packageManager";
 import { kebabToCamel } from "../utils/string";
-import { loadConfig } from "./config";
+import { isGlobHookConfig, loadConfig } from "./config";
 
 /**
  * Represents an executable command.
  * Can be a simple string (handled via shell) or an object with split arguments (handled directly).
  */
 export type Executable = string | { script: string; args: string[] };
+
+/**
+ * Type guard to check if a command is a tuple [script, ArgsFn].
+ */
+function isCommandTuple(value: unknown): value is [string, ArgsFn] {
+	return (
+		Array.isArray(value) &&
+		value.length === 2 &&
+		typeof value[0] === "string" &&
+		typeof value[1] === "function"
+	);
+}
+
+/**
+ * Parses a simple command string into a split Executable object.
+ * Appends extra arguments (e.g. file paths) if provided.
+ */
+function parseSimpleCommand(
+	command: string,
+	extraArgs: string[] = [],
+): Executable {
+	// Optimization: Split simple commands to avoid shell spawn.
+	// This works for "test", "lint --fix", etc.
+	const parts = command.split(/\s+/).filter(Boolean);
+	const script = parts[0];
+	const args = parts.slice(1);
+
+	if (extraArgs.length > 0) {
+		args.push(...extraArgs);
+	}
+
+	return { script, args };
+}
 
 /**
  * Processes a command, resolving it to a final Executable.
@@ -52,21 +85,12 @@ function processCommand(
 		return formatArguments(files, script);
 	}
 
-	const commandString = String(command);
+	// At this point, command is definitely a string (not a tuple).
+	const commandString = command as string;
 	const hasQuotes = commandString.includes('"') || commandString.includes("'");
 
 	if (!hasQuotes) {
-		// Optimization: Split simple commands to avoid shell spawn.
-		// This works for "test", "lint --fix", etc.
-		const parts = commandString.split(/\s+/).filter(Boolean);
-		const script = parts[0];
-		const args = parts.slice(1);
-
-		if (isGlob && files.length > 0) {
-			args.push(...files);
-		}
-
-		return { script, args };
+		return parseSimpleCommand(commandString, isGlob ? files : []);
 	}
 
 	// For glob-based hooks with quotes, we must construct a single string
@@ -104,12 +128,7 @@ const getCommands = (script: Script<string>): Command<string>[] => {
  * @returns True if staged files are needed, false otherwise.
  */
 function shouldFetchStagedFiles(hookConfig: HookConfig): boolean {
-	const isGlob =
-		typeof hookConfig === "object" &&
-		!Array.isArray(hookConfig) &&
-		hookConfig !== null;
-
-	if (isGlob) {
+	if (isGlobHookConfig(hookConfig)) {
 		return true;
 	}
 
@@ -182,18 +201,13 @@ export async function resolveScriptsToRun(
 		}
 	};
 
-	const isGlob =
-		typeof hookConfig === "object" &&
-		!Array.isArray(hookConfig) &&
-		hookConfig !== null;
-
 	let matchedFiles: string[] | null = null;
+	const isGlob = isGlobHookConfig(hookConfig);
 
 	if (isGlob) {
 		if (stagedFiles && stagedFiles.length > 0) {
 			// Optimization: Lazy load and cache micromatch only when needed
 			if (!micromatch) {
-				// @ts-expect-error: Handle default export or CJS export
 				micromatch = (await import("micromatch")).default;
 			}
 			const mm = micromatch!;

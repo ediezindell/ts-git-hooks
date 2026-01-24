@@ -1,4 +1,4 @@
-import { loadConfig } from "../core/config";
+import { isGlobHookConfig, loadConfig } from "../core/config";
 import type {
 	CamelCaseGitHook,
 	Command,
@@ -54,11 +54,7 @@ export async function list() {
 		const kebabCaseHookName = camelToKebab(hookName) as KebabCaseGitHook;
 
 		// Check if the hook config is for glob-based scripts (an object) or unconditional.
-		if (
-			typeof hookConfig === "object" &&
-			!Array.isArray(hookConfig) &&
-			hookConfig !== null
-		) {
+		if (isGlobHookConfig(hookConfig)) {
 			logger.log(`  - ${kebabCaseHookName}:`);
 			for (const [glob, script] of Object.entries(hookConfig)) {
 				logger.log(`    - ${glob}: ${scriptsToString(script)}`);

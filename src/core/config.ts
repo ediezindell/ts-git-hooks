@@ -1,9 +1,28 @@
 import path from "node:path";
 import jiti from "jiti";
-import type { CamelCaseGitHook, TSGitHookConfig } from "../types";
+import type {
+	CamelCaseGitHook,
+	GlobHookConfig,
+	HookConfig,
+	TSGitHookConfig,
+} from "../types";
 import { kebabToCamel } from "../utils/string";
 
 const configFileName = "git-hooks.config.ts";
+
+/**
+ * Type guard to check if a hook configuration is glob-based.
+ * @param hookConfig The configuration to check.
+ */
+export function isGlobHookConfig<T extends string>(
+	hookConfig: HookConfig<T>,
+): hookConfig is GlobHookConfig<T> {
+	return (
+		typeof hookConfig === "object" &&
+		!Array.isArray(hookConfig) &&
+		hookConfig !== null
+	);
+}
 
 /**
  * Loads the ts-git-hooks configuration from the project root.
