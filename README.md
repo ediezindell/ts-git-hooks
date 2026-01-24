@@ -117,6 +117,15 @@ All standard git hooks are supported. Both camelCase (`preCommit`) and kebab-cas
 -   For direct script configs, scripts in an array run in parallel.
 -   If any script fails, the hook fails, and the git operation is aborted.
 
+## Tips & Troubleshooting
+
+### Handling "No files processed" (Biome, ESLint, etc.)
+
+Some tools like **Biome** or **ESLint** may exit with a non-zero code if they are passed files that are eventually ignored by their own configuration (e.g., `biome.json`). To prevent this from failing your git hook, use the appropriate flag:
+
+- **Biome**: Use `--no-errors-on-unmatched`.
+- **ESLint**: Use `--no-error-on-unmatched-pattern`.
+
 ## License
 
 MIT
