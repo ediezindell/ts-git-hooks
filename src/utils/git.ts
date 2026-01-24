@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
+import { logger } from "./logger";
 
 /**
  * Promisified version of `spawn` for running git commands.
@@ -31,7 +32,7 @@ function execGit(args: string[]): Promise<string> {
 				resolve(stdout);
 			} else {
 				// stderr is often used for progress indicators by git, so we only log it for actual errors.
-				console.error(`Error executing: git ${args.join(" ")}\n${stderr}`);
+				logger.error(`Error executing: git ${args.join(" ")}\n${stderr}`);
 				reject(new Error(`Git command failed with exit code ${code}`));
 			}
 		});
@@ -82,7 +83,7 @@ export async function stashPop(): Promise<void> {
 	try {
 		await execGit(["stash", "pop"]);
 	} catch (error) {
-		console.error(
+		logger.error(
 			"Error popping stash. This may be due to a conflict. Please resolve it manually.",
 		);
 		throw error;
