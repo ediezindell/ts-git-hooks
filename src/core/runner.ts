@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import type { Options } from "micromatch";
 import type {
 	ArgsFn,
 	CamelCaseGitHook,
@@ -14,7 +15,6 @@ import {
 	stashPop,
 	stashPushKeepIndex,
 } from "../utils/git";
-import type { Options } from "micromatch";
 import { logger } from "../utils/logger";
 import { getPackageManager } from "../utils/packageManager";
 import { kebabToCamel } from "../utils/string";
@@ -192,7 +192,7 @@ export async function resolveScriptsToRun(
 		if (stagedFiles && stagedFiles.length > 0) {
 			// Optimization: Lazy load and cache micromatch only when needed
 			if (!micromatch) {
-				// @ts-ignore: Handle default export or CJS export
+				// @ts-expect-error: Handle default export or CJS export
 				micromatch = (await import("micromatch")).default;
 			}
 			const mm = micromatch!;
