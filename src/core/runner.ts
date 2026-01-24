@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { join } from "node:path";
 import type { Options } from "micromatch";
 import type {
 	ArgsFn,
@@ -10,8 +11,12 @@ import type {
 } from "../types";
 import {
 	addFiles,
+	evacuateFiles,
 	getChangedFiles,
 	getStagedFiles,
+	getUntrackedFiles,
+	hasUnstagedChanges,
+	restoreFiles,
 	stashPop,
 	stashPushKeepIndex,
 } from "../utils/git";
@@ -341,8 +346,6 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	}
 
 	// Optimization: Only fetch staged files if the hook configuration needs them.
-	// Glob-based hooks need them for matching.
-	// Simple hooks only need them if they use a custom argument function.
 	const stagedFiles = shouldFetchStagedFiles(hookConfig)
 		? await getStagedFiles()
 		: [];
@@ -358,28 +361,62 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	}
 
 	let stashCreated = false;
+	let evacuatedDir: string | null = null;
 
-	// Optimization: Skip stashing for hooks that don't need a clean working directory.
-	// Hooks like commit-msg only check metadata and don't touch project files.
-	// Post-hooks run after the action, so stashing is unnecessary overhead.
+	// Emergency cleanup handler
+	const cleanup = async () => {
+		if (stashCreated) {
+			try {
+				await stashPop();
+			} catch {}
+		}
+		if (evacuatedDir) {
+			try {
+				await restoreFiles(evacuatedDir);
+			} catch {}
+		}
+	};
+
+	// Register signal handlers for robust restoration
+	process.on("SIGINT", async () => {
+		await cleanup();
+		process.exit(130);
+	});
+	process.on("SIGTERM", async () => {
+		await cleanup();
+		process.exit(143);
+	});
+
 	try {
-		// 1. Stash unstaged changes if they exist
+		// 1. Evacuate untracked files
 		if (!hooksSkippingStash.has(hookName)) {
-			stashCreated = await stashPushKeepIndex();
-			if (stashCreated) {
-				logger.info("Stashed unstaged changes.");
+			const untrackedFiles = await getUntrackedFiles();
+			if (untrackedFiles.length > 0) {
+				evacuatedDir = join(
+					".git",
+					"ts-git-hooks",
+					"backups",
+					`${process.pid}_${Date.now()}`,
+				);
+				await evacuateFiles(untrackedFiles, evacuatedDir);
+				logger.info(`Evacuated ${untrackedFiles.length} untracked files.`);
+			}
+
+			// 2. Stash unstaged changes ONLY if they exist (Surgical Stash)
+			if (await hasUnstagedChanges()) {
+				stashCreated = await stashPushKeepIndex();
+				if (stashCreated) {
+					logger.info("Stashed unstaged changes.");
+				}
 			}
 		}
 
-		// 2. Run the scripts
+		// 3. Run the scripts
 		logger.info(`Running scripts for ${hookName}...`);
-		// Use Promise.all to ensure that if any script fails, the entire hook fails.
 		await Promise.all(finalScripts.map((script) => executeScript(script)));
 
-		// 3. For pre-commit, stage any changes made by the scripts
+		// 4. For pre-commit, stage any changes made by the scripts
 		if (hookName === "pre-commit") {
-			// Optimization: For glob-based hooks, only check for changes in files that matched the globs.
-			// This avoids scanning the entire working directory with `git status` which can be slow.
 			const changedFiles = await getChangedFiles(matchedFiles ?? undefined);
 			if (changedFiles.length > 0) {
 				logger.info("Adding modified files to the index...");
@@ -392,12 +429,11 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	} catch (error: unknown) {
 		logger.error(`An error occurred during the ${hookName} hook.`);
 		if (error instanceof Error && error.message) {
-			// Don't log the full error object, just the message for cleaner output.
 			logger.error(error.message);
 		}
 		return false;
 	} finally {
-		// 4. Pop the stash if one was created
+		// 5. Normal restoration
 		if (stashCreated) {
 			try {
 				logger.info("Restoring unstaged changes...");
@@ -406,9 +442,22 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 				logger.error(
 					`CRITICAL: Failed to restore unstaged changes. Please resolve conflicts manually.`,
 				);
-				// This is a critical failure, we need to inform the user and exit
 				process.exit(1);
 			}
 		}
+		if (evacuatedDir) {
+			try {
+				logger.info("Restoring untracked files...");
+				await restoreFiles(evacuatedDir);
+			} catch (_restoreError) {
+				logger.error(
+					`CRITICAL: Failed to restore untracked files from ${evacuatedDir}`,
+				);
+				process.exit(1);
+			}
+		}
+		// Remove signal handlers to avoid memory leaks
+		process.removeAllListeners("SIGINT");
+		process.removeAllListeners("SIGTERM");
 	}
 }

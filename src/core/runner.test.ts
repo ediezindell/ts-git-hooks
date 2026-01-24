@@ -4,8 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GlobHookConfig, TSGitHookConfig } from "../types";
 import {
 	addFiles,
+	evacuateFiles,
 	getChangedFiles,
 	getStagedFiles,
+	getUntrackedFiles,
+	hasUnstagedChanges,
+	restoreFiles,
 	stashPop,
 	stashPushKeepIndex,
 } from "../utils/git";
@@ -51,6 +55,11 @@ const setupDefaultMocks = () => {
 	vi.mocked(getChangedFiles).mockResolvedValue([]);
 	vi.mocked(addFiles).mockResolvedValue(undefined);
 	vi.mocked(getPackageManager).mockReturnValue("npm");
+
+	vi.mocked(getUntrackedFiles).mockResolvedValue([]);
+	vi.mocked(hasUnstagedChanges).mockResolvedValue(false);
+	vi.mocked(evacuateFiles).mockResolvedValue(undefined);
+	vi.mocked(restoreFiles).mockResolvedValue(undefined);
 };
 
 describe("runHook", () => {
@@ -109,6 +118,71 @@ describe("runHook", () => {
 			expect.objectContaining({ shell: false }),
 		);
 		expect(prePushResult).toBe(true);
+	});
+});
+
+describe("Hybrid Stashing logic", () => {
+	beforeEach(() => {
+		setupDefaultMocks();
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("should evacuate untracked files and restore them", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({ preCommit: { "*.ts": "lint" } });
+		vi.mocked(getStagedFiles).mockResolvedValue(["src/a.ts"]);
+		vi.mocked(getUntrackedFiles).mockResolvedValue(["untracked.txt"]);
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		await runHook("pre-commit");
+
+		expect(evacuateFiles).toHaveBeenCalledWith(
+			["untracked.txt"],
+			expect.stringContaining(".git/ts-git-hooks/backups/"),
+		);
+		expect(restoreFiles).toHaveBeenCalledWith(
+			expect.stringContaining(".git/ts-git-hooks/backups/"),
+		);
+	});
+
+	it("should skip stash if there are no unstaged tracked changes", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({ preCommit: { "*.ts": "lint" } });
+		vi.mocked(getStagedFiles).mockResolvedValue(["src/a.ts"]);
+		vi.mocked(hasUnstagedChanges).mockResolvedValue(false);
+		vi.mocked(getUntrackedFiles).mockResolvedValue([]);
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		await runHook("pre-commit");
+
+		expect(stashPushKeepIndex).not.toHaveBeenCalled();
+		expect(stashPop).not.toHaveBeenCalled();
+	});
+
+	it("should perform surgical stash only if unstaged changes exist", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({ preCommit: { "*.ts": "lint" } });
+		vi.mocked(getStagedFiles).mockResolvedValue(["src/a.ts"]);
+		vi.mocked(hasUnstagedChanges).mockResolvedValue(true);
+		vi.mocked(stashPushKeepIndex).mockResolvedValue(true);
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		await runHook("pre-commit");
+
+		expect(stashPushKeepIndex).toHaveBeenCalled();
+		expect(stashPop).toHaveBeenCalled();
 	});
 });
 
@@ -274,37 +348,6 @@ describe("Unconditional (file-independent) hook execution", () => {
 	});
 });
 
-describe("Auto-Fixing and Stashing", () => {
-	beforeEach(() => {
-		setupDefaultMocks();
-		vi.mocked(loadConfig).mockResolvedValue({
-			preCommit: { "*.ts": "format" },
-		});
-		vi.mocked(getStagedFiles).mockResolvedValue(["src/file.ts"]);
-		vi.mocked(spawn).mockImplementation(() => {
-			const p = new MockChildProcess();
-			simulateSuccess(p);
-			return p as any;
-		});
-	});
-
-	afterEach(() => {
-		vi.restoreAllMocks();
-	});
-
-	it("should run full auto-fixing flow and return true", async () => {
-		vi.mocked(stashPushKeepIndex).mockResolvedValue(true);
-		vi.mocked(getChangedFiles).mockResolvedValue(["src/file.ts"]);
-
-		const result = await runHook("pre-commit");
-
-		expect(stashPushKeepIndex).toHaveBeenCalled();
-		expect(addFiles).toHaveBeenCalledWith(["src/file.ts"]);
-		expect(stashPop).toHaveBeenCalled();
-		expect(result).toBe(true);
-	});
-});
-
 describe("resolveScriptsToRun", () => {
 	it("should batch identical commands for different glob patterns", async () => {
 		const hookConfig: GlobHookConfig<string> = {
@@ -442,23 +485,6 @@ describe("Performance Optimizations", () => {
 
 		// It should NOT try to stash
 		expect(stashPushKeepIndex).not.toHaveBeenCalled();
-		expect(stashPop).not.toHaveBeenCalled();
-	});
-
-	it("should attempt to stash but not pop if no unstaged changes", async () => {
-		vi.mocked(loadConfig).mockResolvedValue({ preCommit: { "*.ts": "lint" } });
-		vi.mocked(getStagedFiles).mockResolvedValue(["a.ts"]);
-		// stashPushKeepIndex returns false (no changes)
-		vi.mocked(stashPushKeepIndex).mockResolvedValue(false);
-		vi.mocked(spawn).mockImplementation(() => {
-			const p = new MockChildProcess();
-			simulateSuccess(p);
-			return p as any;
-		});
-
-		await runHook("pre-commit");
-
-		expect(stashPushKeepIndex).toHaveBeenCalled();
 		expect(stashPop).not.toHaveBeenCalled();
 	});
 

@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
+import { dirname, join, relative } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { logger } from "./logger";
 import { parseNullSeparatedList } from "./string";
@@ -33,7 +35,8 @@ function execGit(args: string[]): Promise<string> {
 				resolve(stdout);
 			} else {
 				// stderr is often used for progress indicators by git, so we only log it for actual errors.
-				logger.error(`Error executing: git ${args.join(" ")}\n${stderr}`);
+				const errorMessage = `Error executing: git ${args.join(" ")}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`;
+				logger.error(errorMessage);
 				reject(new Error(`Git command failed with exit code ${code}`));
 			}
 		});
@@ -121,4 +124,75 @@ export async function addFiles(files: string[]): Promise<void> {
 	// Pass files directly as arguments to git add.
 	// This avoids shell quoting issues and command length limits are handled better by spawn.
 	await execGit(["add", ...files]);
+}
+
+/**
+ * Physically moves files to a target backup directory.
+ * @param files List of files to move.
+ * @param backupDir Target directory.
+ */
+export async function evacuateFiles(
+	files: string[],
+	backupDir: string,
+): Promise<void> {
+	if (files.length === 0) return;
+
+	for (const file of files) {
+		const dest = join(backupDir, file);
+		await mkdir(dirname(dest), { recursive: true });
+		await rename(file, dest);
+	}
+}
+
+/**
+ * Restores files from a backup directory back to the working directory.
+ * @param backupDir Source backup directory.
+ */
+export async function restoreFiles(backupDir: string): Promise<void> {
+	const walk = async (dir: string) => {
+		const files = await readdir(dir);
+		for (const file of files) {
+			const fullPath = join(dir, file);
+			const s = await stat(fullPath);
+			if (s.isDirectory()) {
+				await walk(fullPath);
+			} else {
+				const dest = relative(backupDir, fullPath);
+				await mkdir(dirname(dest), { recursive: true });
+				await rename(fullPath, dest);
+			}
+		}
+	};
+
+	try {
+		await walk(backupDir);
+		// Clean up the backup directory after restoration
+		await rm(backupDir, { recursive: true, force: true });
+	} catch (error) {
+		logger.error(`Failed to restore files from ${backupDir}: ${error}`);
+	}
+}
+
+/**
+ * Lists untracked files.
+ * @returns A promise that resolves to an array of untracked file paths.
+ */
+export async function getUntrackedFiles(): Promise<string[]> {
+	// -o: other (untracked), --exclude-standard: use standard ignore rules
+	const stdout = await execGit([
+		"ls-files",
+		"--others",
+		"--exclude-standard",
+		"-z",
+	]);
+	return parseNullSeparatedList(stdout);
+}
+
+/**
+ * Checks if there are any unstaged changes in tracked files.
+ * @returns A promise that resolves to true if there are unstaged changes.
+ */
+export async function hasUnstagedChanges(): Promise<boolean> {
+	const stdout = await execGit(["diff", "--name-only", "-z"]);
+	return parseNullSeparatedList(stdout).length > 0;
 }
