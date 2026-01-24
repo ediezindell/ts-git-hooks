@@ -18,7 +18,7 @@ import {
 import { logger } from "../utils/logger";
 import { getPackageManager } from "../utils/packageManager";
 import { kebabToCamel } from "../utils/string";
-import { loadConfig } from "./config";
+import { isGlobHookConfig, loadConfig } from "./config";
 
 /**
  * Represents an executable command.
@@ -107,12 +107,7 @@ const getCommands = (script: Script<string>): Command<string>[] => {
  * @returns True if staged files are needed, false otherwise.
  */
 function shouldFetchStagedFiles(hookConfig: HookConfig): boolean {
-	const isGlob =
-		typeof hookConfig === "object" &&
-		!Array.isArray(hookConfig) &&
-		hookConfig !== null;
-
-	if (isGlob) {
+	if (isGlobHookConfig(hookConfig)) {
 		return true;
 	}
 
@@ -185,18 +180,13 @@ export async function resolveScriptsToRun(
 		}
 	};
 
-	const isGlob =
-		typeof hookConfig === "object" &&
-		!Array.isArray(hookConfig) &&
-		hookConfig !== null;
-
 	let matchedFiles: string[] | null = null;
+	const isGlob = isGlobHookConfig(hookConfig);
 
 	if (isGlob) {
 		if (stagedFiles && stagedFiles.length > 0) {
 			// Optimization: Lazy load and cache micromatch only when needed
 			if (!micromatch) {
-				// @ts-expect-error: Handle default export or CJS export
 				micromatch = (await import("micromatch")).default;
 			}
 			const mm = micromatch!;
