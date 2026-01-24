@@ -48,6 +48,7 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 				const hookValue = config[hookName as keyof typeof config];
 				if (hookValue) {
 					const camelCaseHookName = kebabToCamel(hookName) as CamelCaseGitHook;
+					// biome-ignore lint/suspicious/noExplicitAny: Dynamic assignment across mapped types requires any
 					normalizedConfig[camelCaseHookName] = hookValue as any;
 				}
 			}
@@ -57,7 +58,12 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 		return null;
 	} catch (error: unknown) {
 		// Jiti throws an error if the file doesn't exist, which is expected.
-		if ((error as any)?.code === "MODULE_NOT_FOUND") {
+		if (
+			typeof error === "object" &&
+			error !== null &&
+			"code" in error &&
+			(error as { code: string }).code === "MODULE_NOT_FOUND"
+		) {
 			return null;
 		}
 		// For other errors, log them as they might be syntax errors in the config.

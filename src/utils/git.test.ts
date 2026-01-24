@@ -67,7 +67,7 @@ describe("getChangedFiles", () => {
 
 	it("should pass file arguments to git diff", async () => {
 		mockSpawn("file1.txt\0");
-		const files = await getChangedFiles(["file1.txt", "file2.txt"]);
+		const _files = await getChangedFiles(["file1.txt", "file2.txt"]);
 		expect(spawn).toHaveBeenCalledWith("git", [
 			"diff",
 			"--name-only",
