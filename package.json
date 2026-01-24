@@ -1,48 +1,48 @@
 {
-  "name": "ts-git-hooks",
-  "version": "1.0.0",
-  "description": "TypeScript-first git hooks manager with type-safe configuration.",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "bin": {
-    "ts-git-hooks": "dist/cli/index.js"
-  },
-  "scripts": {
-    "test": "vitest",
-    "lint": "biome lint .",
-    "format": "biome format --write src",
-    "check": "biome check --write src",
-    "build": "tsc",
-    "prepare": "npm run build",
-    "echo": "echo"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/ediezindell/ts-git-hooks.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/ediezindell/ts-git-hooks/issues"
-  },
-  "homepage": "https://github.com/ediezindell/ts-git-hooks#readme",
-  "files": [
-    "dist",
-    "README.md"
-  ],
-  "devDependencies": {
-    "@biomejs/biome": "^2.2.5",
-    "@types/node": "^24.6.2",
-    "npm-run-all": "^4.1.5",
-    "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
-  },
-  "dependencies": {
-    "@types/micromatch": "^4.0.9",
-    "jiti": "^2.6.1",
-    "micromatch": "^4.0.8",
-    "picocolors": "^1.1.1"
-  },
-  "type": "commonjs"
+	"name": "ts-git-hooks",
+	"version": "1.0.0",
+	"description": "TypeScript-first git hooks manager with type-safe configuration.",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"bin": {
+		"ts-git-hooks": "dist/cli/index.js"
+	},
+	"scripts": {
+		"test": "vitest",
+		"lint": "biome lint .",
+		"format": "biome format --write src",
+		"check": "biome check --write src",
+		"build": "tsc",
+		"prepare": "npm run build",
+		"echo": "echo"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/ediezindell/ts-git-hooks.git"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"bugs": {
+		"url": "https://github.com/ediezindell/ts-git-hooks/issues"
+	},
+	"homepage": "https://github.com/ediezindell/ts-git-hooks#readme",
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"devDependencies": {
+		"@biomejs/biome": "^2.2.5",
+		"@types/node": "^24.6.2",
+		"npm-run-all": "^4.1.5",
+		"typescript": "^5.9.3",
+		"vitest": "^3.2.4"
+	},
+	"dependencies": {
+		"@types/micromatch": "^4.0.9",
+		"jiti": "^2.6.1",
+		"micromatch": "^4.0.8",
+		"picocolors": "^1.1.1"
+	},
+	"type": "commonjs"
 }
