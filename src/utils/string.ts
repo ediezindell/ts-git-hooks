@@ -21,5 +21,5 @@ export const camelToKebab = (str: string) =>
  * @returns An array of non-empty strings.
  */
 export const parseNullSeparatedList = (str: string): string[] => {
-	return str.split("\0").filter((item) => item !== "");
+	return str.split("\0").filter((item) => Boolean(item));
 };
