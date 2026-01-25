@@ -454,7 +454,7 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 			const changedFiles = await getChangedFiles(matchedFiles ?? undefined);
 			if (changedFiles.length > 0) {
 				logger.info("Adding modified files to the index...");
-				await addFiles(changedFiles);
+				await addFiles(changedFiles, true);
 			}
 		}
 

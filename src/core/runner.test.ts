@@ -473,6 +473,34 @@ describe("Performance Optimizations", () => {
 		expect(getStagedFiles).toHaveBeenCalled();
 	});
 
+	it("should call addFiles with force option for pre-commit hook", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({ preCommit: { "*.ts": "lint" } });
+		vi.mocked(getStagedFiles).mockResolvedValue(["src/file.ts"]);
+		vi.mocked(getChangedFiles).mockResolvedValue(["src/file.ts"]);
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		await runHook("pre-commit");
+
+		expect(addFiles).toHaveBeenCalledWith(["src/file.ts"], true);
+	});
+
+	it("should not call addFiles with force option for non-pre-commit hooks", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({ prePush: "test" });
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		await runHook("pre-push");
+
+		expect(addFiles).not.toHaveBeenCalled();
+	});
+
 	it("should NOT stash changes for commit-msg hook", async () => {
 		vi.mocked(loadConfig).mockResolvedValue({ commitMsg: "commitlint" });
 		vi.mocked(spawn).mockImplementation(() => {
@@ -506,10 +534,9 @@ describe("Performance Optimizations", () => {
 	});
 
 	it("should check all files for simple hooks in pre-commit", async () => {
-		// @ts-expect-error - testing runtime behavior for simple hook in pre-commit
 		vi.mocked(loadConfig).mockResolvedValue({
 			preCommit: "lint",
-		});
+		} as any);
 		vi.mocked(getStagedFiles).mockResolvedValue(["src/file.ts"]);
 		vi.mocked(spawn).mockImplementation(() => {
 			const p = new MockChildProcess();

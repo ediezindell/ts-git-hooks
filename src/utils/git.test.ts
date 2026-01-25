@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	addFiles,
 	evacuateFiles,
 	getChangedFiles,
 	getStagedFiles,
@@ -222,14 +223,17 @@ describe("restoreFiles", () => {
 
 	it("should restore files from backup directory and cleanup", async () => {
 		vi.mocked(readdir).mockResolvedValue(["file1.txt", "dir1"] as any);
-		vi.mocked(stat).mockImplementation((path: string) => {
-			if (path.endsWith("dir1")) {
+		vi.mocked(stat).mockImplementation((path) => {
+			const pathStr = path.toString();
+			if (pathStr.endsWith("dir1")) {
 				return Promise.resolve({ isDirectory: () => true } as any);
 			}
 			return Promise.resolve({ isDirectory: () => false } as any);
 		});
-		vi.mocked(readdir).mockImplementation((path: string) => {
-			if (path.endsWith("dir1")) return Promise.resolve(["subfile.txt"] as any);
+		vi.mocked(readdir).mockImplementation((path) => {
+			const pathStr = path.toString();
+			if (pathStr.endsWith("dir1"))
+				return Promise.resolve(["subfile.txt"] as any);
 			return Promise.resolve(["file1.txt", "dir1"] as any);
 		});
 
@@ -241,5 +245,48 @@ describe("restoreFiles", () => {
 			"dir1/subfile.txt",
 		);
 		expect(rm).toHaveBeenCalledWith("backup", { recursive: true, force: true });
+	});
+});
+
+describe("addFiles", () => {
+	afterEach(() => {
+		vi.resetAllMocks();
+	});
+
+	it("should call git add with files", async () => {
+		mockSpawn("");
+		await addFiles(["file1.txt", "file2.txt"]);
+		expect(spawn).toHaveBeenCalledWith("git", [
+			"add",
+			"file1.txt",
+			"file2.txt",
+		]);
+	});
+
+	it("should call git add with force flag when force is true", async () => {
+		mockSpawn("");
+		await addFiles(["file1.txt", "file2.txt"], true);
+		expect(spawn).toHaveBeenCalledWith("git", [
+			"add",
+			"-f",
+			"file1.txt",
+			"file2.txt",
+		]);
+	});
+
+	it("should not call git add when no files are provided", async () => {
+		await addFiles([]);
+		expect(spawn).not.toHaveBeenCalled();
+	});
+
+	it("should not call git add when no files are provided even with force", async () => {
+		await addFiles([], true);
+		expect(spawn).not.toHaveBeenCalled();
+	});
+
+	it("should not add force flag when force is false", async () => {
+		mockSpawn("");
+		await addFiles(["file1.txt"], false);
+		expect(spawn).toHaveBeenCalledWith("git", ["add", "file1.txt"]);
 	});
 });

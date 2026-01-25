@@ -126,14 +126,20 @@ export async function getChangedFiles(files?: string[]): Promise<string[]> {
 /**
  * Stages the specified files.
  * @param files An array of file paths to stage.
+ * @param force Whether to use the -f option to force add files.
  */
-export async function addFiles(files: string[]): Promise<void> {
+export async function addFiles(files: string[], force = false): Promise<void> {
 	if (files.length === 0) {
 		return;
 	}
 	// Pass files directly as arguments to git add.
 	// This avoids shell quoting issues and command length limits are handled better by spawn.
-	await execGit(["add", ...files]);
+	const args = ["add"];
+	if (force) {
+		args.push("-f");
+	}
+	args.push(...files);
+	await execGit(args);
 }
 
 /**
