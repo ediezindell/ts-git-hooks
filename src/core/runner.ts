@@ -131,10 +131,16 @@ function shouldFetchStagedFiles(hookConfig: HookConfig): boolean {
  * - Both are tuples with identical script name and function reference.
  */
 function areCommandsEqual(a: Command<string>, b: Command<string>): boolean {
+	// Reference equality
 	if (a === b) return true;
+
+	// String equality
 	if (typeof a === "string" && typeof b === "string") return a === b;
+
+	// Tuple equality
 	if (isCommandTuple(a) && isCommandTuple(b))
 		return a[0] === b[0] && a[1] === b[1];
+
 	return false;
 }
 
