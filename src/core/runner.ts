@@ -323,6 +323,52 @@ const hooksSkippingStash: Set<string> = new Set([
 ]);
 
 /**
+ * Safely restores stash and evacuated files with specified error handling strategy.
+ * @param options Configuration for restoration behavior.
+ */
+async function safeRestore(options: {
+	stashCreated: boolean;
+	evacuatedDir: string | null;
+	silent?: boolean;
+}): Promise<void> {
+	const { stashCreated, evacuatedDir, silent = false } = options;
+
+	const handleRestoreError = (_error: unknown, message: string) => {
+		if (silent) return;
+		logger.error(message);
+		process.exit(1);
+	};
+
+	if (stashCreated) {
+		try {
+			if (!silent) {
+				logger.info("Restoring unstaged changes...");
+			}
+			await stashPop();
+		} catch (error) {
+			handleRestoreError(
+				error,
+				"CRITICAL: Failed to restore unstaged changes. Please resolve conflicts manually.",
+			);
+		}
+	}
+
+	if (evacuatedDir) {
+		try {
+			if (!silent) {
+				logger.info("Restoring untracked files...");
+			}
+			await restoreFiles(evacuatedDir);
+		} catch (error) {
+			handleRestoreError(
+				error,
+				`CRITICAL: Failed to restore untracked files from ${evacuatedDir}`,
+			);
+		}
+	}
+}
+
+/**
  * Runs the configured scripts for a given git hook.
  * @param hookName The name of the git hook being triggered.
  * @returns A promise that resolves to `true` if the hook succeeds, `false` otherwise.
@@ -359,16 +405,7 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 
 	// Emergency cleanup handler
 	const cleanup = async () => {
-		if (stashCreated) {
-			try {
-				await stashPop();
-			} catch {}
-		}
-		if (evacuatedDir) {
-			try {
-				await restoreFiles(evacuatedDir);
-			} catch {}
-		}
+		await safeRestore({ stashCreated, evacuatedDir, silent: true });
 	};
 
 	// Register signal handlers for robust restoration
@@ -428,28 +465,8 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		return false;
 	} finally {
 		// 5. Normal restoration
-		if (stashCreated) {
-			try {
-				logger.info("Restoring unstaged changes...");
-				await stashPop();
-			} catch (_stashError) {
-				logger.error(
-					`CRITICAL: Failed to restore unstaged changes. Please resolve conflicts manually.`,
-				);
-				process.exit(1);
-			}
-		}
-		if (evacuatedDir) {
-			try {
-				logger.info("Restoring untracked files...");
-				await restoreFiles(evacuatedDir);
-			} catch (_restoreError) {
-				logger.error(
-					`CRITICAL: Failed to restore untracked files from ${evacuatedDir}`,
-				);
-				process.exit(1);
-			}
-		}
+		await safeRestore({ stashCreated, evacuatedDir, silent: false });
+
 		// Remove signal handlers to avoid memory leaks
 		process.removeAllListeners("SIGINT");
 		process.removeAllListeners("SIGTERM");
