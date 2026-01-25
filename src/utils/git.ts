@@ -17,19 +17,27 @@ function execGit(args: string[]): Promise<string> {
 		let stdout = "";
 		let stderr = "";
 
-		child.stdout.on("data", (data) => {
+		const handleOutputData = (data: Buffer, decoder: StringDecoder): string => {
 			// Use StringDecoder to correctly handle multi-byte characters split across chunks
-			stdout += stdoutDecoder.write(data);
-		});
+			return decoder.write(data);
+		};
 
-		child.stderr.on("data", (data) => {
-			stderr += stderrDecoder.write(data);
-		});
-
-		child.on("close", (code) => {
+		const flushDecoders = (): void => {
 			// Flush any remaining bytes
 			stdout += stdoutDecoder.end();
 			stderr += stderrDecoder.end();
+		};
+
+		child.stdout.on("data", (data) => {
+			stdout += handleOutputData(data, stdoutDecoder);
+		});
+
+		child.stderr.on("data", (data) => {
+			stderr += handleOutputData(data, stderrDecoder);
+		});
+
+		child.on("close", (code) => {
+			flushDecoders();
 
 			if (code === 0) {
 				resolve(stdout);
