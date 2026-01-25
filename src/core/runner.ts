@@ -55,11 +55,8 @@ function parseSimpleCommand(
 	// This works for "test", "lint --fix", etc.
 	const parts = command.split(/\s+/).filter(Boolean);
 	const script = parts[0];
-	const args = parts.slice(1);
-
-	if (extraArgs.length > 0) {
-		args.push(...extraArgs);
-	}
+	const args =
+		extraArgs.length > 0 ? [...parts.slice(1), ...extraArgs] : parts.slice(1);
 
 	return { script, args };
 }
