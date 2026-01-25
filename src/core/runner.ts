@@ -176,9 +176,9 @@ export async function resolveScriptsToRun(
 				batchedCommands.push(batch);
 			}
 			// Add all files to the batch's file set
-			files.forEach((file) => {
+			for (const file of files) {
 				batch.files.add(file);
-			});
+			}
 		}
 	};
 
