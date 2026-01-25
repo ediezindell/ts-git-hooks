@@ -16,13 +16,18 @@ export const getPackageManager = (): PackageManager => {
 
 	const userAgent = process.env.npm_config_user_agent || "";
 
-	if (userAgent.startsWith("yarn")) {
-		memoizedPackageManager = "yarn";
-	} else if (userAgent.startsWith("pnpm")) {
-		memoizedPackageManager = "pnpm";
-	} else {
-		memoizedPackageManager = "npm";
-	}
+	// Map of user agent prefixes to package managers
+	const userAgentMap: Record<string, PackageManager> = {
+		yarn: "yarn",
+		pnpm: "pnpm",
+	};
 
+	// Find matching package manager, default to npm
+	const matchedManager =
+		Object.entries(userAgentMap).find(([prefix]) =>
+			userAgent.startsWith(prefix),
+		)?.[1] ?? "npm";
+
+	memoizedPackageManager = matchedManager;
 	return memoizedPackageManager;
 };
