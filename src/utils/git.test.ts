@@ -144,7 +144,11 @@ describe("stashPushKeepIndex", () => {
 	it("should call git stash push --keep-index and return true if stash created", async () => {
 		mockSpawn("Saved working directory and index state WIP on main");
 		const created = await stashPushKeepIndex();
-		expect(spawn).toHaveBeenCalledWith("git", ["stash", "push", "--keep-index"]);
+		expect(spawn).toHaveBeenCalledWith("git", [
+			"stash",
+			"push",
+			"--keep-index",
+		]);
 		expect(created).toBe(true);
 	});
 
@@ -244,7 +248,7 @@ describe("restoreFiles", () => {
 
 	it("should restore files and directories from backup directory and cleanup", async () => {
 		// Mock readdir to return Dirent-like objects
-		vi.mocked(readdir).mockImplementation((path, options) => {
+		vi.mocked(readdir).mockImplementation((path, _options) => {
 			const pathStr = path.toString();
 			if (pathStr === "backup") {
 				return Promise.resolve([
@@ -261,8 +265,7 @@ describe("restoreFiles", () => {
 		});
 
 		// Mock stat for destination check
-		vi.mocked(stat).mockImplementation((path) => {
-			const pathStr = path.toString();
+		vi.mocked(stat).mockImplementation((_path) => {
 			// Assume destination doesn't exist by default
 			return Promise.reject(new Error("ENOENT"));
 		});
@@ -276,7 +279,7 @@ describe("restoreFiles", () => {
 	});
 
 	it("should merge directories if destination already exists", async () => {
-		vi.mocked(readdir).mockImplementation((path, options) => {
+		vi.mocked(readdir).mockImplementation((path, _options) => {
 			const pathStr = path.toString();
 			if (pathStr === "backup") {
 				return Promise.resolve([
