@@ -10,6 +10,7 @@ import {
 	getUntrackedFiles,
 	hasUnstagedChanges,
 	restoreFiles,
+	stashPushKeepIndex,
 } from "./git";
 
 vi.mock("node:fs/promises");
@@ -135,6 +136,25 @@ describe("getChangedFiles", () => {
 	});
 });
 
+describe("stashPushKeepIndex", () => {
+	afterEach(() => {
+		vi.resetAllMocks();
+	});
+
+	it("should call git stash push --keep-index and return true if stash created", async () => {
+		mockSpawn("Saved working directory and index state WIP on main");
+		const created = await stashPushKeepIndex();
+		expect(spawn).toHaveBeenCalledWith("git", ["stash", "push", "--keep-index"]);
+		expect(created).toBe(true);
+	});
+
+	it("should return false if no changes to save", async () => {
+		mockSpawn("No local changes to save");
+		const created = await stashPushKeepIndex();
+		expect(created).toBe(false);
+	});
+});
+
 describe("getStagedFiles", () => {
 	afterEach(() => {
 		vi.resetAllMocks();
@@ -171,16 +191,17 @@ describe("getUntrackedFiles", () => {
 		vi.resetAllMocks();
 	});
 
-	it("should return a list of untracked files", async () => {
-		mockSpawn("untracked1.txt\0untracked2.txt\0");
+	it("should return a list of untracked files and directories", async () => {
+		mockSpawn("untracked1.txt\0untracked_dir/\0");
 		const files = await getUntrackedFiles();
 		expect(spawn).toHaveBeenCalledWith("git", [
 			"ls-files",
 			"--others",
 			"--exclude-standard",
+			"--directory",
 			"-z",
 		]);
-		expect(files).toEqual(["untracked1.txt", "untracked2.txt"]);
+		expect(files).toEqual(["untracked1.txt", "untracked_dir/"]);
 	});
 });
 
@@ -221,25 +242,65 @@ describe("restoreFiles", () => {
 		vi.resetAllMocks();
 	});
 
-	it("should restore files from backup directory and cleanup", async () => {
-		vi.mocked(readdir).mockResolvedValue(["file1.txt", "dir1"] as any);
+	it("should restore files and directories from backup directory and cleanup", async () => {
+		// Mock readdir to return Dirent-like objects
+		vi.mocked(readdir).mockImplementation((path, options) => {
+			const pathStr = path.toString();
+			if (pathStr === "backup") {
+				return Promise.resolve([
+					{ name: "file1.txt", isDirectory: () => false },
+					{ name: "dir1", isDirectory: () => true },
+				] as any);
+			}
+			if (pathStr === "backup/dir1") {
+				return Promise.resolve([
+					{ name: "subfile.txt", isDirectory: () => false },
+				] as any);
+			}
+			return Promise.resolve([]);
+		});
+
+		// Mock stat for destination check
 		vi.mocked(stat).mockImplementation((path) => {
 			const pathStr = path.toString();
-			if (pathStr.endsWith("dir1")) {
-				return Promise.resolve({ isDirectory: () => true } as any);
-			}
-			return Promise.resolve({ isDirectory: () => false } as any);
-		});
-		vi.mocked(readdir).mockImplementation((path) => {
-			const pathStr = path.toString();
-			if (pathStr.endsWith("dir1"))
-				return Promise.resolve(["subfile.txt"] as any);
-			return Promise.resolve(["file1.txt", "dir1"] as any);
+			// Assume destination doesn't exist by default
+			return Promise.reject(new Error("ENOENT"));
 		});
 
 		await restoreFiles("backup");
 
 		expect(rename).toHaveBeenCalledWith("backup/file1.txt", "file1.txt");
+		// In the new implementation, if destination dir doesn't exist, it moves the whole directory
+		expect(rename).toHaveBeenCalledWith("backup/dir1", "dir1");
+		expect(rm).toHaveBeenCalledWith("backup", { recursive: true, force: true });
+	});
+
+	it("should merge directories if destination already exists", async () => {
+		vi.mocked(readdir).mockImplementation((path, options) => {
+			const pathStr = path.toString();
+			if (pathStr === "backup") {
+				return Promise.resolve([
+					{ name: "dir1", isDirectory: () => true },
+				] as any);
+			}
+			if (pathStr === "backup/dir1") {
+				return Promise.resolve([
+					{ name: "subfile.txt", isDirectory: () => false },
+				] as any);
+			}
+			return Promise.resolve([]);
+		});
+
+		vi.mocked(stat).mockImplementation((path) => {
+			const pathStr = path.toString();
+			if (pathStr === "dir1") {
+				return Promise.resolve({ isDirectory: () => true } as any);
+			}
+			return Promise.reject(new Error("ENOENT"));
+		});
+
+		await restoreFiles("backup");
+
 		expect(rename).toHaveBeenCalledWith(
 			"backup/dir1/subfile.txt",
 			"dir1/subfile.txt",
