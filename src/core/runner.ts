@@ -336,22 +336,28 @@ async function safeRestore(options: {
 }): Promise<void> {
 	const { stashCreated, evacuatedDir, silent = false } = options;
 
-	const handleRestoreError = (_error: unknown, message: string) => {
+	const handleRestoreError = (error: unknown, message: string) => {
 		if (silent) return;
 		logger.error(message);
+		if (error instanceof Error && error.message) {
+			logger.error(`Error details: ${error.message}`);
+		}
 		process.exit(1);
 	};
+
+	// Restoration must be careful. We restore stash first, then untracked files.
+	// This is because stash pop might fail due to conflicts.
 
 	if (stashCreated) {
 		try {
 			if (!silent) {
-				logger.info("Restoring unstaged changes...");
+				logger.info("Restoring unstaged changes from stash...");
 			}
 			await stashPop();
 		} catch (error) {
 			handleRestoreError(
 				error,
-				"CRITICAL: Failed to restore unstaged changes. Please resolve conflicts manually.",
+				"CRITICAL: Failed to restore unstaged changes from stash. Please resolve conflicts manually using 'git stash pop'.",
 			);
 		}
 	}
@@ -359,13 +365,14 @@ async function safeRestore(options: {
 	if (evacuatedDir) {
 		try {
 			if (!silent) {
-				logger.info("Restoring untracked files...");
+				logger.info("Restoring untracked files from backup...");
 			}
 			await restoreFiles(evacuatedDir);
 		} catch (error) {
 			handleRestoreError(
 				error,
-				`CRITICAL: Failed to restore untracked files from ${evacuatedDir}`,
+				`CRITICAL: Failed to restore untracked files from backup directory: ${evacuatedDir}\n` +
+					"The files are still safely backed up in that directory. Please restore them manually.",
 			);
 		}
 	}
@@ -405,47 +412,56 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 
 	let stashCreated = false;
 	let evacuatedDir: string | null = null;
+	let restorationCalled = false;
 
-	// Emergency cleanup handler
-	const cleanup = async () => {
-		await safeRestore({ stashCreated, evacuatedDir, silent: true });
+	/**
+	 * Guarded restoration function to ensure it only runs once.
+	 */
+	const performRestoration = async (silent = false) => {
+		if (restorationCalled) return;
+		restorationCalled = true;
+		await safeRestore({ stashCreated, evacuatedDir, silent });
 	};
 
-	// Register signal handlers for robust restoration
-	process.on("SIGINT", async () => {
-		await cleanup();
-		process.exit(130);
-	});
-	process.on("SIGTERM", async () => {
-		await cleanup();
-		process.exit(143);
-	});
+	// Register signal handlers for robust restoration (Failure-safe requirement)
+	const onSignal = async (code: number) => {
+		await performRestoration(true);
+		process.exit(code);
+	};
+
+	process.on("SIGINT", () => onSignal(130));
+	process.on("SIGTERM", () => onSignal(143));
 
 	try {
-		// 1. Evacuate untracked files
+		// Hybrid Stashing Implementation:
+		// 1. Untracked Files (Physical Backup)
 		if (!hooksSkippingStash.has(hookName)) {
-			const untrackedFiles = await getUntrackedFiles();
-			if (untrackedFiles.length > 0) {
+			const untrackedItems = await getUntrackedFiles();
+			if (untrackedItems.length > 0) {
 				evacuatedDir = join(
 					".git",
 					"ts-git-hooks",
 					"backups",
 					`${process.pid}_${Date.now()}`,
 				);
-				await evacuateFiles(untrackedFiles, evacuatedDir);
-				logger.info(`Evacuated ${untrackedFiles.length} untracked files.`);
+				await evacuateFiles(untrackedItems, evacuatedDir);
+				logger.info(
+					`Evacuated ${untrackedItems.length} untracked items to physical backup.`,
+				);
 			}
 
-			// 2. Stash unstaged changes ONLY if they exist (Surgical Stash)
+			// 2. Tracked Files (Conditional git stash)
+			// Check whether there are unstaged tracked changes.
 			if (await hasUnstagedChanges()) {
+				// Only if unstaged changes exist: Run git stash push --keep-index
 				stashCreated = await stashPushKeepIndex();
 				if (stashCreated) {
-					logger.info("Stashed unstaged changes.");
+					logger.info("Stashed unstaged tracked changes.");
 				}
 			}
 		}
 
-		// 3. Run the scripts
+		// 3. Hook Execution
 		logger.info(`Running scripts for ${hookName}...`);
 		await Promise.all(finalScripts.map((script) => executeScript(script)));
 
@@ -467,11 +483,11 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		}
 		return false;
 	} finally {
-		// 5. Normal restoration
-		await safeRestore({ stashCreated, evacuatedDir, silent: false });
-
-		// Remove signal handlers to avoid memory leaks
+		// Remove signal handlers to avoid memory leaks and double restoration
 		process.removeAllListeners("SIGINT");
 		process.removeAllListeners("SIGTERM");
+
+		// 5. Restoration (MUST be failure-safe)
+		await performRestoration(false);
 	}
 }

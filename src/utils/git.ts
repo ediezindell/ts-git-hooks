@@ -73,17 +73,14 @@ export async function getStagedFiles(): Promise<string[]> {
 }
 
 /**
- * Stashes unstaged changes, including untracked files, but keeps the index.
+ * Stashes unstaged changes in tracked files but keeps the index.
  * It also checks if a stash was actually created.
  * @returns A promise that resolves to true if a stash was created, false otherwise.
  */
 export async function stashPushKeepIndex(): Promise<boolean> {
-	const stdout = await execGit([
-		"stash",
-		"push",
-		"--keep-index",
-		"--include-untracked",
-	]);
+	// Hybrid Stashing: We ONLY stash tracked changes.
+	// Untracked files are handled separately by physical evacuation.
+	const stdout = await execGit(["stash", "push", "--keep-index"]);
 	// Git outputs "No local changes to save" when no stash is created
 	const noChangesMessage = "No local changes to save";
 	return !stdout.includes(noChangesMessage);
@@ -143,62 +140,88 @@ export async function addFiles(files: string[], force = false): Promise<void> {
 }
 
 /**
- * Physically moves files to a target backup directory.
- * @param files List of files to move.
+ * Physically moves files and directories to a target backup directory.
+ * @param items List of files or directories to move.
  * @param backupDir Target directory.
  */
 export async function evacuateFiles(
-	files: string[],
+	items: string[],
 	backupDir: string,
 ): Promise<void> {
-	if (files.length === 0) return;
+	if (items.length === 0) return;
 
-	for (const file of files) {
-		const dest = join(backupDir, file);
+	for (const item of items) {
+		// Strip trailing slash if any (git ls-files --directory adds it)
+		const normalizedItem = item.replace(/\/$/, "");
+		const dest = join(backupDir, normalizedItem);
 		await mkdir(dirname(dest), { recursive: true });
-		await rename(file, dest);
+		await rename(normalizedItem, dest);
 	}
 }
 
 /**
- * Restores files from a backup directory back to the working directory.
+ * Restores files and directories from a backup directory back to the working directory.
+ * This uses a recursive merge-move strategy to handle existing directories.
  * @param backupDir Source backup directory.
  */
 export async function restoreFiles(backupDir: string): Promise<void> {
-	const walk = async (dir: string) => {
-		const files = await readdir(dir);
-		for (const file of files) {
-			const fullPath = join(dir, file);
-			const s = await stat(fullPath);
-			if (s.isDirectory()) {
-				await walk(fullPath);
+	const walk = async (currentDir: string) => {
+		const entries = await readdir(currentDir, { withFileTypes: true });
+
+		for (const entry of entries) {
+			const src = join(currentDir, entry.name);
+			const relativePath = relative(backupDir, src);
+			const dest = relativePath; // Relative to current working directory
+
+			const destStat = await stat(dest).catch(() => null);
+
+			if (entry.isDirectory()) {
+				if (destStat?.isDirectory()) {
+					// Both are directories: merge them
+					await walk(src);
+				} else if (destStat) {
+					// Destination exists but is not a directory
+					throw new Error(
+						`Conflict: Cannot restore directory to "${dest}" because a file already exists.`,
+					);
+				} else {
+					// Destination does not exist: move the whole directory
+					await mkdir(dirname(dest), { recursive: true });
+					await rename(src, dest);
+				}
 			} else {
-				const dest = relative(backupDir, fullPath);
+				// It's a file
+				if (destStat?.isDirectory()) {
+					throw new Error(
+						`Conflict: Cannot restore file to "${dest}" because a directory already exists.`,
+					);
+				}
+				// Move the file, potentially overwriting if it was a file (not recommended, but better than dropping)
 				await mkdir(dirname(dest), { recursive: true });
-				await rename(fullPath, dest);
+				await rename(src, dest);
 			}
 		}
 	};
 
-	try {
-		await walk(backupDir);
-		// Clean up the backup directory after restoration
-		await rm(backupDir, { recursive: true, force: true });
-	} catch (error) {
-		logger.error(`Failed to restore files from ${backupDir}: ${error}`);
-	}
+	// Start restoration
+	await walk(backupDir);
+
+	// Only clean up if we successfully moved EVERYTHING
+	await rm(backupDir, { recursive: true, force: true });
 }
 
 /**
- * Lists untracked files.
- * @returns A promise that resolves to an array of untracked file paths.
+ * Lists untracked files and directories.
+ * @returns A promise that resolves to an array of untracked paths.
  */
 export async function getUntrackedFiles(): Promise<string[]> {
 	// -o: other (untracked), --exclude-standard: use standard ignore rules
+	// --directory: show directories as a whole if they are untracked
 	const stdout = await execGit([
 		"ls-files",
 		"--others",
 		"--exclude-standard",
+		"--directory",
 		"-z",
 	]);
 	return parseNullSeparatedList(stdout);
