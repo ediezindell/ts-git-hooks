@@ -53,7 +53,7 @@ function parseSimpleCommand(
 ): Executable {
 	// Optimization: Split simple commands to avoid shell spawn.
 	// This works for "test", "lint --fix", etc.
-	const parts = command.split(/\s+/).filter(Boolean);
+	const parts = command.split(/\s+/).filter((part) => part !== "");
 	const script = parts[0];
 	const args =
 		extraArgs.length > 0 ? [...parts.slice(1), ...extraArgs] : parts.slice(1);
