@@ -332,46 +332,64 @@ async function safeRestore(options: {
 	silent?: boolean;
 }): Promise<void> {
 	const { stashCreated, evacuatedDir, silent = false } = options;
+	const errors: { error: unknown; message: string }[] = [];
 
-	const handleRestoreError = (error: unknown, message: string) => {
-		if (silent) return;
-		logger.error(message);
-		if (error instanceof Error && error.message) {
-			logger.error(`Error details: ${error.message}`);
-		}
-		process.exit(1);
-	};
+	const tasks: Promise<void>[] = [];
 
-	// Restoration must be careful. We restore stash first, then untracked files.
-	// This is because stash pop might fail due to conflicts.
+	// Restoration must be careful. We attempt both in parallel.
+	// We use separate try-catch blocks to ensure one failure doesn't block the other.
 
 	if (stashCreated) {
-		try {
-			if (!silent) {
-				logger.info("Restoring unstaged changes from stash...");
-			}
-			await stashPop();
-		} catch (error) {
-			handleRestoreError(
-				error,
-				"CRITICAL: Failed to restore unstaged changes from stash. Please resolve conflicts manually using 'git stash pop'.",
-			);
-		}
+		tasks.push(
+			(async () => {
+				try {
+					if (!silent) {
+						logger.info("Restoring unstaged changes from stash...");
+					}
+					await stashPop();
+				} catch (error) {
+					errors.push({
+						error,
+						message:
+							"CRITICAL: Failed to restore unstaged changes from stash. Please resolve conflicts manually using 'git stash pop'.",
+					});
+				}
+			})(),
+		);
 	}
 
 	if (evacuatedDir) {
-		try {
-			if (!silent) {
-				logger.info("Restoring untracked files from backup...");
+		tasks.push(
+			(async () => {
+				try {
+					if (!silent) {
+						logger.info("Restoring untracked files from backup...");
+					}
+					await restoreFiles(evacuatedDir);
+				} catch (error) {
+					errors.push({
+						error,
+						message:
+							`CRITICAL: Failed to restore untracked files from backup directory: ${evacuatedDir}\n` +
+							"The files are still safely backed up in that directory. Please restore them manually.",
+					});
+				}
+			})(),
+		);
+	}
+
+	if (tasks.length > 0) {
+		await Promise.all(tasks);
+	}
+
+	if (errors.length > 0 && !silent) {
+		for (const { error, message } of errors) {
+			logger.error(message);
+			if (error instanceof Error && error.message) {
+				logger.error(`Error details: ${error.message}`);
 			}
-			await restoreFiles(evacuatedDir);
-		} catch (error) {
-			handleRestoreError(
-				error,
-				`CRITICAL: Failed to restore untracked files from backup directory: ${evacuatedDir}\n` +
-					"The files are still safely backed up in that directory. Please restore them manually.",
-			);
 		}
+		process.exit(1);
 	}
 }
 
@@ -439,6 +457,8 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	try {
 		// Hybrid Stashing Implementation:
 		if (needsStash) {
+			const stashTasks: Promise<void>[] = [];
+
 			// 2. Untracked Files (Physical Backup)
 			if (untrackedItems.length > 0) {
 				evacuatedDir = join(
@@ -447,9 +467,12 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 					"backups",
 					`${process.pid}_${Date.now()}`,
 				);
-				await evacuateFiles(untrackedItems, evacuatedDir);
-				logger.info(
-					`Evacuated ${untrackedItems.length} untracked items to physical backup.`,
+				stashTasks.push(
+					evacuateFiles(untrackedItems, evacuatedDir).then(() => {
+						logger.info(
+							`Evacuated ${untrackedItems.length} untracked items to physical backup.`,
+						);
+					}),
 				);
 			}
 
@@ -457,10 +480,18 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 			// Check whether there are unstaged tracked changes.
 			if (unstagedChangesExist) {
 				// Only if unstaged changes exist: Run git stash push --keep-index
-				stashCreated = await stashPushKeepIndex();
-				if (stashCreated) {
-					logger.info("Stashed unstaged tracked changes.");
-				}
+				stashTasks.push(
+					stashPushKeepIndex().then((created) => {
+						stashCreated = created;
+						if (stashCreated) {
+							logger.info("Stashed unstaged tracked changes.");
+						}
+					}),
+				);
+			}
+
+			if (stashTasks.length > 0) {
+				await Promise.all(stashTasks);
 			}
 		}
 
