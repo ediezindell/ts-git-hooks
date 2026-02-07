@@ -9,6 +9,7 @@
 	},
 	"scripts": {
 		"test": "vitest",
+		"test:e2e": "vitest --config vitest.e2e.config.ts",
 		"lint": "biome lint .",
 		"format": "biome format --write src",
 		"check": "biome check --write src",
