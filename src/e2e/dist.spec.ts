@@ -101,8 +101,12 @@ describe("CLI Distribution Test (E2E)", () => {
 		// The default config from 'init' includes 'lint' and 'test' for pre-commit.
 		// Our dummy package.json has: "lint": "echo lint", "test": "echo test"
 		// We create a dummy file to match the glob: *.{js,ts,jsx,tsx}
-		await fs.writeFile(path.join(testDir, "test.ts"), "console.log('test');", "utf-8");
-		
+		await fs.writeFile(
+			path.join(testDir, "test.ts"),
+			"console.log('test');",
+			"utf-8",
+		);
+
 		// We need to stage the file because the runner (via git-ls-files) only sees tracked files
 		execSync("git add test.ts", { cwd: testDir });
 
