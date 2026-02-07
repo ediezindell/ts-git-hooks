@@ -13,9 +13,8 @@ import {
 	addFiles,
 	evacuateFiles,
 	getChangedFiles,
+	getGitStatus,
 	getStagedFiles,
-	getUntrackedFiles,
-	hasUnstagedChanges,
 	restoreFiles,
 	stashPop,
 	stashPushKeepIndex,
@@ -410,17 +409,27 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		return true; // No configuration for this hook, so it's a success
 	}
 
-	// Optimization: Start all necessary git checks in parallel to minimize latency.
+	// Optimization: Start all necessary git checks.
+	// We use getGitStatus to combine multiple checks into a single process spawn when possible.
 	const needsStagedFiles = shouldFetchStagedFiles(hookConfig);
 	const needsStash = !hooksSkippingStash.has(hookName);
 
-	const [stagedFiles, untrackedItems, unstagedChangesExist] = await Promise.all(
-		[
-			needsStagedFiles ? getStagedFiles() : Promise.resolve([]),
-			needsStash ? getUntrackedFiles() : Promise.resolve([]),
-			needsStash ? hasUnstagedChanges() : Promise.resolve(false),
-		],
-	);
+	const [stagedFiles, untrackedItems, unstagedChangesExist] =
+		await (async () => {
+			if (needsStash) {
+				const status = await getGitStatus();
+				return [
+					status.stagedFiles,
+					status.untrackedItems,
+					status.unstagedChangesExist,
+				] as const;
+			}
+			if (needsStagedFiles) {
+				const staged = await getStagedFiles();
+				return [staged, [], false] as const;
+			}
+			return [[], [], false] as const;
+		})();
 
 	const { scripts: finalScripts, matchedFiles } = await resolveScriptsToRun(
 		hookConfig,

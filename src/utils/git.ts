@@ -272,3 +272,54 @@ export async function hasUnstagedChanges(): Promise<boolean> {
 	const code = await execGitStatus(["diff", "--quiet"]);
 	return code !== 0;
 }
+
+/**
+ * Retrieves comprehensive git status in a single command.
+ * Returns staged files, untracked items, and whether unstaged changes exist.
+ * This is an optimization to avoid multiple process spawns.
+ */
+export async function getGitStatus(): Promise<{
+	stagedFiles: string[];
+	untrackedItems: string[];
+	unstagedChangesExist: boolean;
+}> {
+	// -z: null-terminated output
+	// --porcelain=v1: stable output format
+	const stdout = await execGit(["status", "--porcelain=v1", "-z"]);
+	const items = parseNullSeparatedList(stdout);
+
+	const stagedFiles: string[] = [];
+	const untrackedItems: string[] = [];
+	let unstagedChangesExist = false;
+
+	for (let i = 0; i < items.length; i++) {
+		const item = items[i];
+		if (item.length < 4) continue;
+
+		const x = item[0];
+		const y = item[1];
+		const path = item.substring(3);
+
+		// 1. Untracked
+		if (x === "?" && y === "?") {
+			untrackedItems.push(path);
+			continue;
+		}
+
+		// 2. Staged (matching --diff-filter=ACMR: Added, Modified, Renamed, Copied)
+		if (x === "A" || x === "M" || x === "R" || x === "C") {
+			stagedFiles.push(path);
+			// For renames and copies, the next null-terminated item is the old path
+			if (x === "R" || x === "C") {
+				i++; // Skip the old path
+			}
+		}
+
+		// 3. Unstaged changes (Modified or Deleted in work tree)
+		if (y === "M" || y === "D") {
+			unstagedChangesExist = true;
+		}
+	}
+
+	return { stagedFiles, untrackedItems, unstagedChangesExist };
+}

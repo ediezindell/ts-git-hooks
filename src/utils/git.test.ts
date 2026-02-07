@@ -6,6 +6,7 @@ import {
 	addFiles,
 	evacuateFiles,
 	getChangedFiles,
+	getGitStatus,
 	getStagedFiles,
 	getUntrackedFiles,
 	hasUnstagedChanges,
@@ -232,6 +233,61 @@ describe("hasUnstagedChanges", () => {
 		expect(spawn).toHaveBeenCalledWith("git", ["diff", "--quiet"], {
 			stdio: "ignore",
 		});
+	});
+});
+
+describe("getGitStatus", () => {
+	afterEach(() => {
+		vi.resetAllMocks();
+	});
+
+	it("should return staged files, untracked files, and unstaged changes status", async () => {
+		// M staged1.ts
+		// A staged2.ts
+		// R renamed.ts\0old.ts
+		//  M unstaged.ts
+		// ?? untracked.ts
+		mockSpawn(
+			"M  staged1.ts\0A  staged2.ts\0R  renamed.ts\0old.ts\0 M unstaged.ts\0?? untracked.ts\0",
+		);
+
+		const status = await getGitStatus();
+
+		expect(spawn).toHaveBeenCalledWith("git", [
+			"status",
+			"--porcelain=v1",
+			"-z",
+		]);
+
+		expect(status.stagedFiles).toEqual([
+			"staged1.ts",
+			"staged2.ts",
+			"renamed.ts",
+		]);
+		expect(status.untrackedItems).toEqual(["untracked.ts"]);
+		expect(status.unstagedChangesExist).toBe(true);
+	});
+
+	it("should return unstagedChangesExist as true when there is a deletion in worktree", async () => {
+		mockSpawn(" D deleted.ts\0");
+		const status = await getGitStatus();
+		expect(status.unstagedChangesExist).toBe(true);
+		expect(status.stagedFiles).toEqual([]);
+	});
+
+	it("should return stagedFiles including copied files (C)", async () => {
+		mockSpawn("C  copied.ts\0orig.ts\0");
+		const status = await getGitStatus();
+		expect(status.stagedFiles).toEqual(["copied.ts"]);
+		expect(status.unstagedChangesExist).toBe(false);
+	});
+
+	it("should return empty results when status is clean", async () => {
+		mockSpawn("");
+		const status = await getGitStatus();
+		expect(status.stagedFiles).toEqual([]);
+		expect(status.untrackedItems).toEqual([]);
+		expect(status.unstagedChangesExist).toBe(false);
 	});
 });
 

@@ -6,6 +6,7 @@ import {
 	addFiles,
 	evacuateFiles,
 	getChangedFiles,
+	getGitStatus,
 	getStagedFiles,
 	getUntrackedFiles,
 	hasUnstagedChanges,
@@ -50,6 +51,11 @@ const setupDefaultMocks = () => {
 	vi.spyOn(console, "error").mockImplementation(() => {});
 
 	vi.mocked(getStagedFiles).mockResolvedValue([]);
+	vi.mocked(getGitStatus).mockResolvedValue({
+		stagedFiles: [],
+		untrackedItems: [],
+		unstagedChangesExist: false,
+	});
 	vi.mocked(stashPushKeepIndex).mockResolvedValue(false);
 	vi.mocked(stashPop).mockResolvedValue(undefined);
 	vi.mocked(getChangedFiles).mockResolvedValue([]);
@@ -92,7 +98,11 @@ describe("runHook", () => {
 			prePush: "test",
 		};
 		vi.mocked(loadConfig).mockResolvedValue(mockConfig);
-		vi.mocked(getStagedFiles).mockResolvedValue(["my-file.js"]);
+		vi.mocked(getGitStatus).mockResolvedValue({
+			stagedFiles: ["my-file.js"],
+			untrackedItems: [],
+			unstagedChangesExist: false,
+		});
 		vi.mocked(spawn).mockImplementation(() => {
 			const p = new MockChildProcess();
 			simulateSuccess(p);
@@ -132,8 +142,11 @@ describe("Hybrid Stashing logic", () => {
 
 	it("should evacuate untracked files and restore them", async () => {
 		vi.mocked(loadConfig).mockResolvedValue({ preCommit: { "*.ts": "lint" } });
-		vi.mocked(getStagedFiles).mockResolvedValue(["src/a.ts"]);
-		vi.mocked(getUntrackedFiles).mockResolvedValue(["untracked.txt"]);
+		vi.mocked(getGitStatus).mockResolvedValue({
+			stagedFiles: ["src/a.ts"],
+			untrackedItems: ["untracked.txt"],
+			unstagedChangesExist: false,
+		});
 		vi.mocked(spawn).mockImplementation(() => {
 			const p = new MockChildProcess();
 			simulateSuccess(p);
@@ -153,9 +166,11 @@ describe("Hybrid Stashing logic", () => {
 
 	it("should skip stash if there are no unstaged tracked changes", async () => {
 		vi.mocked(loadConfig).mockResolvedValue({ preCommit: { "*.ts": "lint" } });
-		vi.mocked(getStagedFiles).mockResolvedValue(["src/a.ts"]);
-		vi.mocked(hasUnstagedChanges).mockResolvedValue(false);
-		vi.mocked(getUntrackedFiles).mockResolvedValue([]);
+		vi.mocked(getGitStatus).mockResolvedValue({
+			stagedFiles: ["src/a.ts"],
+			untrackedItems: [],
+			unstagedChangesExist: false,
+		});
 		vi.mocked(spawn).mockImplementation(() => {
 			const p = new MockChildProcess();
 			simulateSuccess(p);
@@ -170,8 +185,11 @@ describe("Hybrid Stashing logic", () => {
 
 	it("should perform surgical stash only if unstaged changes exist", async () => {
 		vi.mocked(loadConfig).mockResolvedValue({ preCommit: { "*.ts": "lint" } });
-		vi.mocked(getStagedFiles).mockResolvedValue(["src/a.ts"]);
-		vi.mocked(hasUnstagedChanges).mockResolvedValue(true);
+		vi.mocked(getGitStatus).mockResolvedValue({
+			stagedFiles: ["src/a.ts"],
+			untrackedItems: [],
+			unstagedChangesExist: true,
+		});
 		vi.mocked(stashPushKeepIndex).mockResolvedValue(true);
 		vi.mocked(spawn).mockImplementation(() => {
 			const p = new MockChildProcess();
@@ -189,7 +207,11 @@ describe("Hybrid Stashing logic", () => {
 describe("Glob-based (file-dependent) hook execution", () => {
 	beforeEach(() => {
 		setupDefaultMocks();
-		vi.mocked(getStagedFiles).mockResolvedValue(["src/index.ts", "README.md"]);
+		vi.mocked(getGitStatus).mockResolvedValue({
+			stagedFiles: ["src/index.ts", "README.md"],
+			untrackedItems: [],
+			unstagedChangesExist: false,
+		});
 	});
 
 	afterEach(() => {
@@ -436,7 +458,9 @@ describe("Performance Optimizations", () => {
 
 		const result = await runHook("pre-push");
 
+		// For pre-push, needsStash is true, so it calls getGitStatus instead of getStagedFiles
 		expect(getStagedFiles).not.toHaveBeenCalled();
+		expect(getGitStatus).toHaveBeenCalled();
 		expect(spawn).toHaveBeenCalledWith(
 			"npm",
 			["run", "test"],
@@ -445,9 +469,13 @@ describe("Performance Optimizations", () => {
 		expect(result).toBe(true);
 	});
 
-	it("should call getStagedFiles for glob-based hook", async () => {
+	it("should call getGitStatus for glob-based hook", async () => {
 		vi.mocked(loadConfig).mockResolvedValue({ preCommit: { "*.ts": "lint" } });
-		vi.mocked(getStagedFiles).mockResolvedValue(["a.ts"]);
+		vi.mocked(getGitStatus).mockResolvedValue({
+			stagedFiles: ["a.ts"],
+			untrackedItems: [],
+			unstagedChangesExist: false,
+		});
 		vi.mocked(spawn).mockImplementation(() => {
 			const p = new MockChildProcess();
 			simulateSuccess(p);
@@ -455,14 +483,18 @@ describe("Performance Optimizations", () => {
 		});
 
 		await runHook("pre-commit");
-		expect(getStagedFiles).toHaveBeenCalled();
+		expect(getGitStatus).toHaveBeenCalled();
 	});
 
-	it("should call getStagedFiles for simple hook WITH args function", async () => {
+	it("should call getGitStatus for simple hook WITH args function", async () => {
 		vi.mocked(loadConfig).mockResolvedValue({
 			prePush: ["lint", (files) => `echo ${files.length}`],
 		});
-		vi.mocked(getStagedFiles).mockResolvedValue(["a.ts"]);
+		vi.mocked(getGitStatus).mockResolvedValue({
+			stagedFiles: ["a.ts"],
+			untrackedItems: [],
+			unstagedChangesExist: false,
+		});
 		vi.mocked(spawn).mockImplementation(() => {
 			const p = new MockChildProcess();
 			simulateSuccess(p);
@@ -470,12 +502,16 @@ describe("Performance Optimizations", () => {
 		});
 
 		await runHook("pre-push");
-		expect(getStagedFiles).toHaveBeenCalled();
+		expect(getGitStatus).toHaveBeenCalled();
 	});
 
 	it("should call addFiles with force option for pre-commit hook", async () => {
 		vi.mocked(loadConfig).mockResolvedValue({ preCommit: { "*.ts": "lint" } });
-		vi.mocked(getStagedFiles).mockResolvedValue(["src/file.ts"]);
+		vi.mocked(getGitStatus).mockResolvedValue({
+			stagedFiles: ["src/file.ts"],
+			untrackedItems: [],
+			unstagedChangesExist: false,
+		});
 		vi.mocked(getChangedFiles).mockResolvedValue(["src/file.ts"]);
 		vi.mocked(spawn).mockImplementation(() => {
 			const p = new MockChildProcess();
@@ -520,7 +556,11 @@ describe("Performance Optimizations", () => {
 		vi.mocked(loadConfig).mockResolvedValue({
 			preCommit: { "*.ts": "lint" },
 		});
-		vi.mocked(getStagedFiles).mockResolvedValue(["src/file.ts", "README.md"]);
+		vi.mocked(getGitStatus).mockResolvedValue({
+			stagedFiles: ["src/file.ts", "README.md"],
+			untrackedItems: [],
+			unstagedChangesExist: false,
+		});
 		vi.mocked(spawn).mockImplementation(() => {
 			const p = new MockChildProcess();
 			simulateSuccess(p);
@@ -537,7 +577,11 @@ describe("Performance Optimizations", () => {
 		vi.mocked(loadConfig).mockResolvedValue({
 			preCommit: "lint",
 		} as any);
-		vi.mocked(getStagedFiles).mockResolvedValue(["src/file.ts"]);
+		vi.mocked(getGitStatus).mockResolvedValue({
+			stagedFiles: ["src/file.ts"],
+			untrackedItems: [],
+			unstagedChangesExist: false,
+		});
 		vi.mocked(spawn).mockImplementation(() => {
 			const p = new MockChildProcess();
 			simulateSuccess(p);
