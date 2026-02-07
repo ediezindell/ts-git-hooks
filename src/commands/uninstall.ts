@@ -1,9 +1,10 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../core/config";
-import type { KebabCaseGitHook } from "../types";
+import type { CamelCaseGitHook, KebabCaseGitHook } from "../types";
 import { fileExists } from "../utils/fs";
 import { logger } from "../utils/logger";
+import { camelToKebab } from "../utils/string";
 
 const gitHooksDir = path.join(process.cwd(), ".git", "hooks");
 const hookIdentifier = "# This hook was installed by ts-git-hooks";
@@ -14,7 +15,7 @@ const hookIdentifier = "# This hook was installed by ts-git-hooks";
 export async function uninstall() {
 	const config = await loadConfig();
 	const configuredHooks = config
-		? (Object.keys(config) as KebabCaseGitHook[])
+		? (Object.keys(config) as CamelCaseGitHook[])
 		: [];
 
 	if (configuredHooks.length === 0) {
@@ -25,14 +26,15 @@ export async function uninstall() {
 	const removedHooks: KebabCaseGitHook[] = [];
 
 	for (const hookName of configuredHooks) {
-		const hookPath = path.join(gitHooksDir, hookName);
+		const kebabCaseHookName = camelToKebab(hookName) as KebabCaseGitHook;
+		const hookPath = path.join(gitHooksDir, kebabCaseHookName);
 
 		if (await fileExists(hookPath)) {
 			try {
 				const content = await fs.readFile(hookPath, "utf-8");
 				if (content.includes(hookIdentifier)) {
 					await fs.unlink(hookPath);
-					removedHooks.push(hookName);
+					removedHooks.push(kebabCaseHookName);
 				}
 			} catch (_error) {
 				// Ignore errors for reading/unlinking, as the file might be gone

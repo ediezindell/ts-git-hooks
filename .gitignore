@@ -23,3 +23,5 @@ Thumbs.db
 .kiro
 GEMINI.md
 TODO.md
+git-hooks.config.ts
+git-hooks.d.ts
