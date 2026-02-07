@@ -50,6 +50,10 @@
 **Learning:** Sequential await calls for `getUntrackedFiles` and `hasUnstagedChanges` in `runHook` add unnecessary latency. Since both are read-only operations on the git index/worktree, they can be safely parallelized. Additionally, re-initializing `jiti` on every `loadConfig` call adds overhead, especially visible during test execution.
 **Action:** Parallelized git status checks in `src/core/runner.ts` and memoized the `jiti` instance in `src/core/config.ts`.
 
+## 2026-02-14 - Parallelize stashing and restoration
+**Learning:** Stashing tracked changes (`git stash push`) and evacuating untracked files (physical backup) are independent operations that work on disjoint sets of files. Running them sequentially in `runHook` adds unnecessary latency to the hook critical path. Similarly, restoring them in `safeRestore` can be parallelized, which also allows both restoration attempts to proceed even if one fails (e.g., due to stash conflicts).
+**Action:** Parallelized stashing and restoration operations in `src/core/runner.ts` using `Promise.all` and improved error collection in `safeRestore`.
+
 ## 2026-02-07 - Further parallelization of initial git checks
 **Learning:** Starting `getUntrackedFiles` and `hasUnstagedChanges` early, in parallel with `getStagedFiles` and `resolveScriptsToRun`, further reduces the critical path latency of the hook execution. This is especially effective because `getStagedFiles` and the other status checks are independent and often bottlenecked by process spawning overhead.
 **Action:** Refactored `runHook` in `src/core/runner.ts` to start all three git status operations at the beginning of the function using `Promise.all`.
