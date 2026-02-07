@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import { promises as fs } from "node:fs";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 describe("CLI Distribution Test (E2E)", () => {
@@ -9,16 +9,16 @@ describe("CLI Distribution Test (E2E)", () => {
 	const distPath = path.join(rootDir, "dist/cli/index.js");
 	let testDir: string;
 
-		beforeAll(async () => {
-			// 1. Create a temporary directory for testing
-			testDir = await fs.mkdtemp(path.join(os.tmpdir(), "ts-git-hooks-test-"));
-			
-			// 2. Change process directory to avoid any accidental writes to the project root
-			process.chdir(testDir);
-	
-			// 3. Initialize git in the temp dir
-			execSync("git init", { cwd: testDir });
-			// 4. Create a dummy package.json
+	beforeAll(async () => {
+		// 1. Create a temporary directory for testing
+		testDir = await fs.mkdtemp(path.join(os.tmpdir(), "ts-git-hooks-test-"));
+
+		// 2. Change process directory to avoid any accidental writes to the project root
+		process.chdir(testDir);
+
+		// 3. Initialize git in the temp dir
+		execSync("git init", { cwd: testDir });
+		// 4. Create a dummy package.json
 		await fs.writeFile(
 			path.join(testDir, "package.json"),
 			JSON.stringify({
@@ -37,11 +37,11 @@ describe("CLI Distribution Test (E2E)", () => {
 	afterAll(async () => {
 		// Change back to root directory before removing testDir
 		process.chdir(rootDir);
-		
+
 		// Cleanup the temporary directory
 		await fs.rm(testDir, { recursive: true, force: true });
 
-		// Extra safety: Ensure no leftover files in the actual project root 
+		// Extra safety: Ensure no leftover files in the actual project root
 		// if something went wrong and paths were misresolved.
 		const leftovers = ["git-hooks.config.ts", "git-hooks.d.ts"];
 		for (const file of leftovers) {
@@ -51,7 +51,7 @@ describe("CLI Distribution Test (E2E)", () => {
 				if (stats.isFile()) {
 					// We only want to remove it if it was created very recently (during test)
 					// but for safety in E2E, it's better to just ensure the test environment is clean.
-					// However, removing files from rootDir is dangerous. 
+					// However, removing files from rootDir is dangerous.
 					// A better approach is to ensure they are NEVER created there.
 				}
 			} catch {
