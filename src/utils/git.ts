@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
-import { StringDecoder } from "node:string_decoder";
 import { logger } from "./logger";
 import { parseNullSeparatedList } from "./string";
 
@@ -30,31 +29,26 @@ function execGitStatus(args: string[]): Promise<number> {
 function execGit(args: string[]): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const child = spawn("git", args);
-		const stdoutDecoder = new StringDecoder("utf8");
-		const stderrDecoder = new StringDecoder("utf8");
-		const stdoutChunks: string[] = [];
-		const stderrChunks: string[] = [];
+		const stdoutChunks: Buffer[] = [];
+		const stderrChunks: Buffer[] = [];
 
 		child.stdout.on("data", (data) => {
-			// Use StringDecoder to correctly handle multi-byte characters split across chunks
-			stdoutChunks.push(stdoutDecoder.write(data));
+			stdoutChunks.push(data);
 		});
 
 		child.stderr.on("data", (data) => {
-			stderrChunks.push(stderrDecoder.write(data));
+			stderrChunks.push(data);
 		});
 
 		child.on("close", (code) => {
-			// Flush any remaining bytes
-			stdoutChunks.push(stdoutDecoder.end());
-			stderrChunks.push(stderrDecoder.end());
-
-			const stdout = stdoutChunks.join("");
-			const stderr = stderrChunks.join("");
-
 			if (code === 0) {
+				// Optimization: Collect all buffers and decode once at the end.
+				// This is faster and more memory-efficient than decoding chunk by chunk.
+				const stdout = Buffer.concat(stdoutChunks).toString("utf8");
 				resolve(stdout);
 			} else {
+				const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+				const stderr = Buffer.concat(stderrChunks).toString("utf8");
 				// stderr is often used for progress indicators by git, so we only log it for actual errors.
 				const errorMessage = `Error executing: git ${args.join(" ")}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`;
 				logger.error(errorMessage);
@@ -163,11 +157,20 @@ export async function evacuateFiles(
 ): Promise<void> {
 	if (items.length === 0) return;
 
+	// Optimization: Cache created directories to avoid redundant mkdir calls.
+	const createdDirs = new Set<string>();
+
 	for (const item of items) {
 		// Strip trailing slash if any (git ls-files --directory adds it)
 		const normalizedItem = item.replace(/\/$/, "");
 		const dest = join(backupDir, normalizedItem);
-		await mkdir(dirname(dest), { recursive: true });
+		const parentDir = dirname(dest);
+
+		if (!createdDirs.has(parentDir)) {
+			await mkdir(parentDir, { recursive: true });
+			createdDirs.add(parentDir);
+		}
+
 		await rename(normalizedItem, dest);
 	}
 }
@@ -178,6 +181,9 @@ export async function evacuateFiles(
  * @param backupDir Source backup directory.
  */
 export async function restoreFiles(backupDir: string): Promise<void> {
+	// Optimization: Cache created directories to avoid redundant mkdir calls.
+	const createdDirs = new Set<string>();
+
 	const walk = async (currentDir: string) => {
 		const entries = await readdir(currentDir, { withFileTypes: true });
 
@@ -199,7 +205,11 @@ export async function restoreFiles(backupDir: string): Promise<void> {
 					);
 				} else {
 					// Destination does not exist: move the whole directory
-					await mkdir(dirname(dest), { recursive: true });
+					const parentDir = dirname(dest);
+					if (parentDir !== "." && !createdDirs.has(parentDir)) {
+						await mkdir(parentDir, { recursive: true });
+						createdDirs.add(parentDir);
+					}
 					await rename(src, dest);
 				}
 			} else {
@@ -210,7 +220,11 @@ export async function restoreFiles(backupDir: string): Promise<void> {
 					);
 				}
 				// Move the file, potentially overwriting if it was a file (not recommended, but better than dropping)
-				await mkdir(dirname(dest), { recursive: true });
+				const parentDir = dirname(dest);
+				if (parentDir !== "." && !createdDirs.has(parentDir)) {
+					await mkdir(parentDir, { recursive: true });
+					createdDirs.add(parentDir);
+				}
 				await rename(src, dest);
 			}
 		}

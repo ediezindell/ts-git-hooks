@@ -392,10 +392,17 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		return true; // No configuration for this hook, so it's a success
 	}
 
-	// Optimization: Only fetch staged files if the hook configuration needs them.
-	const stagedFiles = shouldFetchStagedFiles(hookConfig)
-		? await getStagedFiles()
-		: [];
+	// Optimization: Start all necessary git checks in parallel to minimize latency.
+	const needsStagedFiles = shouldFetchStagedFiles(hookConfig);
+	const needsStash = !hooksSkippingStash.has(hookName);
+
+	const [stagedFiles, untrackedItems, unstagedChangesExist] = await Promise.all(
+		[
+			needsStagedFiles ? getStagedFiles() : Promise.resolve([]),
+			needsStash ? getUntrackedFiles() : Promise.resolve([]),
+			needsStash ? hasUnstagedChanges() : Promise.resolve(false),
+		],
+	);
 
 	const { scripts: finalScripts, matchedFiles } = await resolveScriptsToRun(
 		hookConfig,
@@ -431,9 +438,8 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 
 	try {
 		// Hybrid Stashing Implementation:
-		// 1. Untracked Files (Physical Backup)
-		if (!hooksSkippingStash.has(hookName)) {
-			const untrackedItems = await getUntrackedFiles();
+		if (needsStash) {
+			// 2. Untracked Files (Physical Backup)
 			if (untrackedItems.length > 0) {
 				evacuatedDir = join(
 					".git",
@@ -447,9 +453,9 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 				);
 			}
 
-			// 2. Tracked Files (Conditional git stash)
+			// 3. Tracked Files (Conditional git stash)
 			// Check whether there are unstaged tracked changes.
-			if (await hasUnstagedChanges()) {
+			if (unstagedChangesExist) {
 				// Only if unstaged changes exist: Run git stash push --keep-index
 				stashCreated = await stashPushKeepIndex();
 				if (stashCreated) {
@@ -458,11 +464,11 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 			}
 		}
 
-		// 3. Hook Execution
+		// 4. Hook Execution
 		logger.info(`Running scripts for ${hookName}...`);
 		await Promise.all(finalScripts.map((script) => executeScript(script)));
 
-		// 4. For pre-commit, stage any changes made by the scripts
+		// 5. For pre-commit, stage any changes made by the scripts
 		if (hookName === "pre-commit") {
 			const changedFiles = await getChangedFiles(matchedFiles ?? undefined);
 			if (changedFiles.length > 0) {
@@ -484,7 +490,7 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		process.removeAllListeners("SIGINT");
 		process.removeAllListeners("SIGTERM");
 
-		// 5. Restoration (MUST be failure-safe)
+		// 6. Restoration (MUST be failure-safe)
 		await performRestoration(false);
 	}
 }

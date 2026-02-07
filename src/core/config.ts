@@ -1,5 +1,5 @@
 import path from "node:path";
-import jiti from "jiti";
+import jiti, { type Jiti } from "jiti";
 import type {
 	CamelCaseGitHook,
 	GlobHookConfig,
@@ -9,6 +9,9 @@ import type {
 import { kebabToCamel } from "../utils/string";
 
 const configFileName = "git-hooks.config.ts";
+
+// Memoize jiti instance to avoid repeated initialization overhead
+let _jiti: Jiti | undefined;
 
 /**
  * Type guard to check if a hook configuration is glob-based.
@@ -34,7 +37,9 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 
 	try {
 		// Use jiti to dynamically require the .ts config file
-		const _jiti = jiti(__filename);
+		if (!_jiti) {
+			_jiti = jiti(__filename);
+		}
 		const configModule = _jiti(configFilePath);
 
 		if (configModule?.config) {

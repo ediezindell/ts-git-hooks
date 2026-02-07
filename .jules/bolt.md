@@ -37,3 +37,22 @@
 ## 2026-02-12 - Algorithmic optimization for command grouping
 **Learning:** Grouping patterns by command using `array.find()` with structural comparison leads to O(N²) complexity (where N is the number of patterns). While N is often small, this adds unnecessary overhead. Using a `Map` with stringified command keys (using a `WeakMap` for stable function-to-ID mapping) reduces this to O(N).
 **Action:** Refactored `resolveScriptsToRun` in `src/core/runner.ts` to use `Map` for command grouping and lookups.
+
+## 2026-02-14 - Optimize redundant directory creation in file evacuation
+**Learning:** During stashing of untracked files (`evacuateFiles`) and their restoration (`restoreFiles`), `mkdir({ recursive: true })` was being called for every single file. For repositories with many untracked files in the same directory, this results in numerous redundant and expensive syscalls.
+**Action:** Implemented a `Set`-based cache for created directory paths within `evacuateFiles` and `restoreFiles` to ensure `mkdir` is called at most once per unique directory.
+
+## 2026-02-14 - Efficient git output collection with Buffer
+**Learning:** Collecting `git` output by decoding chunks into strings using `StringDecoder` and then joining them is less efficient than collecting raw `Buffer` chunks and using `Buffer.concat().toString()`. The latter avoids multiple intermediate string allocations and redundant encoding passes for every chunk. Also, decoding `stderr` is unnecessary on the success path.
+**Action:** Refactored `execGit` in `src/utils/git.ts` to use `Buffer` accumulation and deferred decoding.
+
+## 2026-02-14 - Parallelize git checks and memoize jiti
+**Learning:** Sequential await calls for `getUntrackedFiles` and `hasUnstagedChanges` in `runHook` add unnecessary latency. Since both are read-only operations on the git index/worktree, they can be safely parallelized. Additionally, re-initializing `jiti` on every `loadConfig` call adds overhead, especially visible during test execution.
+**Action:** Parallelized git status checks in `src/core/runner.ts` and memoized the `jiti` instance in `src/core/config.ts`.
+
+## 2026-02-07 - Further parallelization of initial git checks
+**Learning:** Starting `getUntrackedFiles` and `hasUnstagedChanges` early, in parallel with `getStagedFiles` and `resolveScriptsToRun`, further reduces the critical path latency of the hook execution. This is especially effective because `getStagedFiles` and the other status checks are independent and often bottlenecked by process spawning overhead.
+**Action:** Refactored `runHook` in `src/core/runner.ts` to start all three git status operations at the beginning of the function using `Promise.all`.
+
+
+
