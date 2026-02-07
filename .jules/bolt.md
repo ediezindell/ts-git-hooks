@@ -63,5 +63,15 @@
 **Action:** Refactored `evacuateFiles` to batch directory creation and parallelize file renames. Refactored `restoreFiles` to process directory entries in parallel while safely managing `mkdir` concurrency with a shared promise cache.
 
 ## 2026-02-08 - Optimize combined git status checks
+
 **Learning:** For hooks that require stashing (like `pre-commit`), calling `getStagedFiles`, `getUntrackedFiles`, and `hasUnstagedChanges` separately resulted in 3 process spawns. Even when parallelized, the overhead of multiple `spawn` calls is significant (~50-100ms). Using `git status --porcelain=v1 -z` allows retrieving all this information in a single process spawn, significantly reducing latency.
+
 **Action:** Implemented `getGitStatus` in `src/utils/git.ts` and updated `runHook` to use it when stashing is needed.
+
+
+
+## 2026-02-08 - Secondary performance and robustness improvements
+
+**Learning:** Minor optimizations across the codebase contribute to overall snappiness. Memoizing `loadConfig` in memory benefits repeated calls in test environments. Improving signal handler removal ensures cleaner resource management. Avoiding redundant string conversions in the `execGit` error path slightly reduces memory pressure during failures.
+
+**Action:** Implemented in-memory memoization for `loadConfig`, switched to `process.off` for precise signal handler removal, and optimized the `execGit` error path.

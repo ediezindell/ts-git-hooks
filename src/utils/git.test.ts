@@ -275,6 +275,13 @@ describe("getGitStatus", () => {
 		expect(status.stagedFiles).toEqual([]);
 	});
 
+	it("should return unstagedChangesExist as true when there is a type change (T) in worktree", async () => {
+		mockSpawn(" T typechange.ts\0");
+		const status = await getGitStatus();
+		expect(status.unstagedChangesExist).toBe(true);
+		expect(status.stagedFiles).toEqual([]);
+	});
+
 	it("should return stagedFiles including copied files (C)", async () => {
 		mockSpawn("C  copied.ts\0orig.ts\0");
 		const status = await getGitStatus();

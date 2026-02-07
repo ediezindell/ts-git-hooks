@@ -14,6 +14,15 @@ const configFileName = "git-hooks.config.ts";
 
 // Memoize jiti instance to avoid repeated initialization overhead
 let _jiti: Jiti | undefined;
+// Memoize loaded configuration to avoid repeated parsing and normalization in the same process
+let _memoizedConfig: TSGitHookConfig | null = null;
+
+/**
+ * For testing purposes ONLY. Resets the memoized configuration.
+ */
+export const _resetConfig = () => {
+	_memoizedConfig = null;
+};
 
 /**
  * Type guard to check if a hook configuration is glob-based.
@@ -35,6 +44,10 @@ export function isGlobHookConfig<T extends string>(
  * @returns The loaded configuration object, or null if the file doesn't exist.
  */
 export async function loadConfig(): Promise<TSGitHookConfig | null> {
+	if (_memoizedConfig) {
+		return _memoizedConfig;
+	}
+
 	const configFilePath = path.join(process.cwd(), configFileName);
 
 	try {
@@ -59,7 +72,8 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 					normalizedConfig[camelCaseHookName] = hookValue as any;
 				}
 			}
-			return normalizedConfig;
+			_memoizedConfig = normalizedConfig;
+			return _memoizedConfig;
 		}
 
 		return null;

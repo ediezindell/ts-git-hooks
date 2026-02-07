@@ -454,14 +454,17 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		await safeRestore({ stashCreated, evacuatedDir, silent });
 	};
 
+	const onSigInt = () => onSignal(130);
+	const onSigTerm = () => onSignal(143);
+
 	// Register signal handlers for robust restoration (Failure-safe requirement)
-	const onSignal = async (code: number) => {
+	async function onSignal(code: number) {
 		await performRestoration(true);
 		process.exit(code);
-	};
+	}
 
-	process.on("SIGINT", () => onSignal(130));
-	process.on("SIGTERM", () => onSignal(143));
+	process.on("SIGINT", onSigInt);
+	process.on("SIGTERM", onSigTerm);
 
 	try {
 		// Hybrid Stashing Implementation:
@@ -527,8 +530,8 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		return false;
 	} finally {
 		// Remove signal handlers to avoid memory leaks and double restoration
-		process.removeAllListeners("SIGINT");
-		process.removeAllListeners("SIGTERM");
+		process.off("SIGINT", onSigInt);
+		process.off("SIGTERM", onSigTerm);
 
 		// 6. Restoration (MUST be failure-safe)
 		await performRestoration(false);

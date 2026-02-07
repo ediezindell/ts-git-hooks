@@ -41,13 +41,14 @@ function execGit(args: string[]): Promise<string> {
 		});
 
 		child.on("close", (code) => {
+			const stdout =
+				stdoutChunks.length === 1
+					? stdoutChunks[0].toString("utf8")
+					: Buffer.concat(stdoutChunks).toString("utf8");
+
 			if (code === 0) {
-				// Optimization: Collect all buffers and decode once at the end.
-				// This is faster and more memory-efficient than decoding chunk by chunk.
-				const stdout = Buffer.concat(stdoutChunks).toString("utf8");
 				resolve(stdout);
 			} else {
-				const stdout = Buffer.concat(stdoutChunks).toString("utf8");
 				const stderr = Buffer.concat(stderrChunks).toString("utf8");
 				// stderr is often used for progress indicators by git, so we only log it for actual errors.
 				const errorMessage = `Error executing: git ${args.join(" ")}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`;
@@ -298,7 +299,7 @@ export async function getGitStatus(): Promise<{
 
 		const x = item[0];
 		const y = item[1];
-		const path = item.substring(3);
+		const path = item.slice(3);
 
 		// 1. Untracked
 		if (x === "?" && y === "?") {
@@ -315,8 +316,9 @@ export async function getGitStatus(): Promise<{
 			}
 		}
 
-		// 3. Unstaged changes (Modified or Deleted in work tree)
-		if (y === "M" || y === "D") {
+		// 3. Unstaged changes (Modified, Deleted, Type changed, or Unmerged in work tree)
+		// Any non-space value in Y (except for untracked ??) means worktree differs from index.
+		if (y !== " " && y !== "?") {
 			unstagedChangesExist = true;
 		}
 	}
