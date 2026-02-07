@@ -124,26 +124,6 @@ function shouldFetchStagedFiles(hookConfig: HookConfig): boolean {
 	return commands.some(isCommandTuple);
 }
 
-/**
- * Checks if two commands are equal.
- * Equality is defined as:
- * - Both are identical references or identical strings.
- * - Both are tuples with identical script name and function reference.
- */
-function areCommandsEqual(a: Command<string>, b: Command<string>): boolean {
-	// Reference equality
-	if (a === b) return true;
-
-	// String equality
-	if (typeof a === "string" && typeof b === "string") return a === b;
-
-	// Tuple equality
-	if (isCommandTuple(a) && isCommandTuple(b))
-		return a[0] === b[0] && a[1] === b[1];
-
-	return false;
-}
-
 // Cache for the micromatch module to avoid repeated dynamic imports.
 let micromatch:
 	| ((
@@ -164,22 +144,39 @@ export async function resolveScriptsToRun(
 	stagedFiles: string[] | null,
 ): Promise<{ scripts: Executable[]; matchedFiles: string[] | null }> {
 	const scriptsToRun: Executable[] = [];
-	const batchedCommands: {
-		command: Command<string>;
-		files: Set<string>;
-	}[] = [];
+	// Optimization: Use a Map for O(1) lookups during command grouping.
+	const batchedCommands = new Map<
+		string,
+		{ command: Command<string>; files: Set<string> }
+	>();
+
+	// WeakMap to assign unique IDs to functions for O(1) command comparison keys.
+	// We keep this local to the function as it's only needed for a single resolution pass.
+	const functionIds = new WeakMap<ArgsFn, number>();
+	let nextFunctionId = 0;
+
+	const getCommandKey = (command: Command<string>): string => {
+		if (typeof command === "string") {
+			return `s:${command}`;
+		}
+		let id = functionIds.get(command[1]);
+		if (id === undefined) {
+			id = nextFunctionId++;
+			functionIds.set(command[1], id);
+		}
+		return `t:${command[0]}:${id}`;
+	};
 
 	const processListOfCommands = (
 		commands: Command<string>[],
 		files: string[],
 	) => {
 		for (const command of commands) {
-			let batch = batchedCommands.find((b) =>
-				areCommandsEqual(b.command, command),
-			);
+			const key = getCommandKey(command);
+			let batch = batchedCommands.get(key);
 			if (!batch) {
 				batch = { command, files: new Set() };
-				batchedCommands.push(batch);
+				batchedCommands.set(key, batch);
 			}
 			// Add all files to the batch's file set
 			for (const file of files) {
@@ -209,33 +206,33 @@ export async function resolveScriptsToRun(
 			});
 
 			if (matchedFiles.length > 0) {
-				// 2. Group patterns by command to minimize micromatch calls
-				const commandToPatterns = new Map<Command<string>, string[]>();
-				const uniqueCommands: Command<string>[] = [];
+				// 2. Group patterns by command to minimize micromatch calls.
+				// Use Map with string keys for O(1) lookup.
+				const keyToPatterns = new Map<string, string[]>();
+				const keyToCommand = new Map<string, Command<string>>();
 
 				for (const [pattern, script] of Object.entries(hookConfig)) {
 					const commands = getCommands(script);
 					for (const command of commands) {
-						let existingCommand = uniqueCommands.find((c) =>
-							areCommandsEqual(c, command),
-						);
-						if (!existingCommand) {
-							existingCommand = command;
-							uniqueCommands.push(existingCommand);
+						const key = getCommandKey(command);
+						if (!keyToCommand.has(key)) {
+							keyToCommand.set(key, command);
 						}
 
-						let patternList = commandToPatterns.get(existingCommand);
+						let patternList = keyToPatterns.get(key);
 						if (!patternList) {
 							patternList = [];
-							commandToPatterns.set(existingCommand, patternList);
+							keyToPatterns.set(key, patternList);
 						}
 						patternList.push(pattern);
 					}
 				}
 
 				// 3. Run micromatch for each unique command group
-				for (const command of uniqueCommands) {
-					const patternsForCommand = commandToPatterns.get(command) ?? [];
+				for (const [key, patternsForCommand] of keyToPatterns) {
+					const command = keyToCommand.get(key);
+					if (!command) continue;
+
 					// Optimization: Use matchedFiles instead of stagedFiles.
 					// Since matchedFiles is the subset of stagedFiles that matched ANY pattern,
 					// any file matching patternsForCommand MUST be in matchedFiles.
@@ -256,7 +253,7 @@ export async function resolveScriptsToRun(
 		processListOfCommands(commandsToProcess, stagedFiles ?? []);
 	}
 
-	for (const batch of batchedCommands) {
+	for (const batch of batchedCommands.values()) {
 		scriptsToRun.push(
 			processCommand(batch.command, Array.from(batch.files), isGlob),
 		);
