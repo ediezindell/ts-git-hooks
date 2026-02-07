@@ -73,3 +73,7 @@
 ## 2026-01-23 - Bypass npm exec for hooks
 **Learning:** `npm exec` (or `npx`) adds significant overhead (e.g., ~350ms) to hook execution. Checking for the local binary `./node_modules/.bin/ts-git-hooks` and executing it directly (if present) bypasses this overhead, significantly speeding up hooks.
 **Action:** Updated `install` command to generate a shell script that checks for the binary and executes it directly, falling back to `npm exec` only if needed.
+
+## 2026-02-07 - Optimize unstaged changes check
+**Learning:** `git diff --name-only` followed by output parsing is slower and more memory-intensive than `git diff --quiet`. `--quiet` allows git to exit early as soon as it finds a single difference, and avoids all string capture/decoding overhead. Also, accumulating `execGit` output in an array before joining is significantly faster than repeated string concatenation for large git outputs.
+**Action:** Implemented `execGitStatus` to use `stdio: 'ignore'` and return only the exit code. Refactored `hasUnstagedChanges` to use `git diff --quiet`. Optimized `execGit` to use chunk accumulation.
