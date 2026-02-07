@@ -1,5 +1,5 @@
 import path from "node:path";
-import jiti, { type Jiti } from "jiti";
+import jiti from "jiti";
 import type {
 	CamelCaseGitHook,
 	GlobHookConfig,
@@ -7,6 +7,8 @@ import type {
 	TSGitHookConfig,
 } from "../types";
 import { kebabToCamel } from "../utils/string";
+
+type Jiti = ReturnType<typeof jiti>;
 
 const configFileName = "git-hooks.config.ts";
 

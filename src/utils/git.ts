@@ -157,8 +157,9 @@ export async function evacuateFiles(
 ): Promise<void> {
 	if (items.length === 0) return;
 
-	// Optimization: Cache created directories to avoid redundant mkdir calls.
-	const createdDirs = new Set<string>();
+	// Optimization: Pre-calculate unique parent directories to create them in parallel.
+	const parentDirs = new Set<string>();
+	const moves: { src: string; dest: string }[] = [];
 
 	for (const item of items) {
 		// Strip trailing slash if any (git ls-files --directory adds it)
@@ -166,13 +167,17 @@ export async function evacuateFiles(
 		const dest = join(backupDir, normalizedItem);
 		const parentDir = dirname(dest);
 
-		if (!createdDirs.has(parentDir)) {
-			await mkdir(parentDir, { recursive: true });
-			createdDirs.add(parentDir);
-		}
-
-		await rename(normalizedItem, dest);
+		parentDirs.add(parentDir);
+		moves.push({ src: normalizedItem, dest });
 	}
+
+	// 1. Create all parent directories in parallel
+	await Promise.all(
+		Array.from(parentDirs).map((dir) => mkdir(dir, { recursive: true })),
+	);
+
+	// 2. Move all files in parallel
+	await Promise.all(moves.map(({ src, dest }) => rename(src, dest)));
 }
 
 /**
@@ -181,53 +186,56 @@ export async function evacuateFiles(
  * @param backupDir Source backup directory.
  */
 export async function restoreFiles(backupDir: string): Promise<void> {
-	// Optimization: Cache created directories to avoid redundant mkdir calls.
-	const createdDirs = new Set<string>();
+	// Optimization: Cache mkdir promises to avoid race conditions and redundant calls during parallel execution.
+	const mkdirCache = new Map<string, Promise<string | undefined>>();
+	const ensureDir = (dir: string) => {
+		if (dir === ".") return Promise.resolve();
+		if (!mkdirCache.has(dir)) {
+			mkdirCache.set(dir, mkdir(dir, { recursive: true }));
+		}
+		return mkdirCache.get(dir) as Promise<string | undefined>;
+	};
 
 	const walk = async (currentDir: string) => {
 		const entries = await readdir(currentDir, { withFileTypes: true });
 
-		for (const entry of entries) {
-			const src = join(currentDir, entry.name);
-			const relativePath = relative(backupDir, src);
-			const dest = relativePath; // Relative to current working directory
+		await Promise.all(
+			entries.map(async (entry) => {
+				const src = join(currentDir, entry.name);
+				const relativePath = relative(backupDir, src);
+				const dest = relativePath; // Relative to current working directory
 
-			const destStat = await stat(dest).catch(() => null);
+				const destStat = await stat(dest).catch(() => null);
 
-			if (entry.isDirectory()) {
-				if (destStat?.isDirectory()) {
-					// Both are directories: merge them
-					await walk(src);
-				} else if (destStat) {
-					// Destination exists but is not a directory
-					throw new Error(
-						`Conflict: Cannot restore directory to "${dest}" because a file already exists.`,
-					);
-				} else {
-					// Destination does not exist: move the whole directory
-					const parentDir = dirname(dest);
-					if (parentDir !== "." && !createdDirs.has(parentDir)) {
-						await mkdir(parentDir, { recursive: true });
-						createdDirs.add(parentDir);
+				if (entry.isDirectory()) {
+					if (destStat?.isDirectory()) {
+						// Both are directories: merge them
+						await walk(src);
+					} else if (destStat) {
+						// Destination exists but is not a directory
+						throw new Error(
+							`Conflict: Cannot restore directory to "${dest}" because a file already exists.`,
+						);
+					} else {
+						// Destination does not exist: move the whole directory
+						const parentDir = dirname(dest);
+						await ensureDir(parentDir);
+						await rename(src, dest);
 					}
+				} else {
+					// It's a file
+					if (destStat?.isDirectory()) {
+						throw new Error(
+							`Conflict: Cannot restore file to "${dest}" because a directory already exists.`,
+						);
+					}
+					// Move the file, potentially overwriting if it was a file (not recommended, but better than dropping)
+					const parentDir = dirname(dest);
+					await ensureDir(parentDir);
 					await rename(src, dest);
 				}
-			} else {
-				// It's a file
-				if (destStat?.isDirectory()) {
-					throw new Error(
-						`Conflict: Cannot restore file to "${dest}" because a directory already exists.`,
-					);
-				}
-				// Move the file, potentially overwriting if it was a file (not recommended, but better than dropping)
-				const parentDir = dirname(dest);
-				if (parentDir !== "." && !createdDirs.has(parentDir)) {
-					await mkdir(parentDir, { recursive: true });
-					createdDirs.add(parentDir);
-				}
-				await rename(src, dest);
-			}
-		}
+			}),
+		);
 	};
 
 	// Start restoration
