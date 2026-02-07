@@ -215,15 +215,23 @@ describe("hasUnstagedChanges", () => {
 	});
 
 	it("should return true if there are unstaged changes", async () => {
-		mockSpawn("modified.ts\0");
+		// git diff --quiet returns 1 if there are changes
+		mockSpawn("", 1);
 		const hasChanges = await hasUnstagedChanges();
 		expect(hasChanges).toBe(true);
+		expect(spawn).toHaveBeenCalledWith("git", ["diff", "--quiet"], {
+			stdio: "ignore",
+		});
 	});
 
 	it("should return false if there are no unstaged changes", async () => {
-		mockSpawn("");
+		// git diff --quiet returns 0 if there are no changes
+		mockSpawn("", 0);
 		const hasChanges = await hasUnstagedChanges();
 		expect(hasChanges).toBe(false);
+		expect(spawn).toHaveBeenCalledWith("git", ["diff", "--quiet"], {
+			stdio: "ignore",
+		});
 	});
 });
 

@@ -6,6 +6,24 @@ import { logger } from "./logger";
 import { parseNullSeparatedList } from "./string";
 
 /**
+ * Promisified version of `spawn` for running git commands and getting the exit code.
+ * Uses `stdio: "ignore"` for maximum performance when output is not needed.
+ */
+function execGitStatus(args: string[]): Promise<number> {
+	return new Promise((resolve) => {
+		const child = spawn("git", args, { stdio: "ignore" });
+
+		child.on("close", (code) => {
+			resolve(code ?? 1);
+		});
+
+		child.on("error", () => {
+			resolve(1);
+		});
+	});
+}
+
+/**
  * Promisified version of `spawn` for running git commands.
  * Uses `spawn` directly to avoid shell overhead and argument parsing issues.
  */
@@ -14,30 +32,25 @@ function execGit(args: string[]): Promise<string> {
 		const child = spawn("git", args);
 		const stdoutDecoder = new StringDecoder("utf8");
 		const stderrDecoder = new StringDecoder("utf8");
-		let stdout = "";
-		let stderr = "";
-
-		const handleOutputData = (data: Buffer, decoder: StringDecoder): string => {
-			// Use StringDecoder to correctly handle multi-byte characters split across chunks
-			return decoder.write(data);
-		};
-
-		const flushDecoders = (): void => {
-			// Flush any remaining bytes
-			stdout += stdoutDecoder.end();
-			stderr += stderrDecoder.end();
-		};
+		const stdoutChunks: string[] = [];
+		const stderrChunks: string[] = [];
 
 		child.stdout.on("data", (data) => {
-			stdout += handleOutputData(data, stdoutDecoder);
+			// Use StringDecoder to correctly handle multi-byte characters split across chunks
+			stdoutChunks.push(stdoutDecoder.write(data));
 		});
 
 		child.stderr.on("data", (data) => {
-			stderr += handleOutputData(data, stderrDecoder);
+			stderrChunks.push(stderrDecoder.write(data));
 		});
 
 		child.on("close", (code) => {
-			flushDecoders();
+			// Flush any remaining bytes
+			stdoutChunks.push(stdoutDecoder.end());
+			stderrChunks.push(stderrDecoder.end());
+
+			const stdout = stdoutChunks.join("");
+			const stderr = stderrChunks.join("");
 
 			if (code === 0) {
 				resolve(stdout);
@@ -229,9 +242,11 @@ export async function getUntrackedFiles(): Promise<string[]> {
 
 /**
  * Checks if there are any unstaged changes in tracked files.
+ * Uses `git diff --quiet` which is faster as it exits early on the first difference.
  * @returns A promise that resolves to true if there are unstaged changes.
  */
 export async function hasUnstagedChanges(): Promise<boolean> {
-	const stdout = await execGit(["diff", "--name-only", "-z"]);
-	return parseNullSeparatedList(stdout).length > 0;
+	// git diff --quiet returns 1 if there are changes, 0 if not.
+	const code = await execGitStatus(["diff", "--quiet"]);
+	return code !== 0;
 }
