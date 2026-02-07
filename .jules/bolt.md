@@ -54,5 +54,6 @@
 **Learning:** Starting `getUntrackedFiles` and `hasUnstagedChanges` early, in parallel with `getStagedFiles` and `resolveScriptsToRun`, further reduces the critical path latency of the hook execution. This is especially effective because `getStagedFiles` and the other status checks are independent and often bottlenecked by process spawning overhead.
 **Action:** Refactored `runHook` in `src/core/runner.ts` to start all three git status operations at the beginning of the function using `Promise.all`.
 
-
-
+## 2026-02-08 - Parallel file operations for backup/restore
+**Learning:** `evacuateFiles` and `restoreFiles` were performing file I/O operations (rename, mkdir) sequentially. For operations involving many files, this is I/O bound. Parallelizing these operations using `Promise.all` significantly reduces the time taken to stash and restore untracked files, which is critical for hook performance during complex git states.
+**Action:** Refactored `evacuateFiles` to batch directory creation and parallelize file renames. Refactored `restoreFiles` to process directory entries in parallel while safely managing `mkdir` concurrency with a shared promise cache.
