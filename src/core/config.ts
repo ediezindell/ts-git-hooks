@@ -58,6 +58,36 @@ export function isGlobHookConfig<T extends string>(
 }
 
 /**
+ * Initializes and returns the jiti instance for dynamic TypeScript loading.
+ */
+async function getJiti(): Promise<JitiInstance> {
+	if (!_jiti) {
+		const jitiModule = await import("jiti");
+		const createJiti = jitiModule.default;
+		_jiti = createJiti(__filename) as unknown as JitiInstance;
+	}
+	return _jiti;
+}
+
+/**
+ * Normalizes configuration by converting all hook names to camelCase.
+ * @param config The raw configuration object.
+ */
+function normalizeConfig(config: TSGitHookConfig): TSGitHookConfig {
+	const normalized: TSGitHookConfig = {};
+
+	for (const [hookName, hookValue] of Object.entries(config)) {
+		if (hookValue) {
+			const camelCaseHookName = kebabToCamel(hookName) as CamelCaseGitHook;
+			// biome-ignore lint/suspicious/noExplicitAny: Dynamic assignment across mapped types requires any
+			normalized[camelCaseHookName] = hookValue as any;
+		}
+	}
+
+	return normalized;
+}
+
+/**
  * Loads the ts-git-hooks configuration from the project root.
  * It uses `jiti` to require the TypeScript configuration file on the fly.
  * @returns The loaded configuration object, or null if the file doesn't exist.
@@ -70,48 +100,29 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 	const configFilePath = path.join(process.cwd(), configFileName);
 
 	// Optimization: Check if file exists before loading jiti (~10-20ms saved)
-	const exists = await fileExists(configFilePath);
-	if (!exists) {
+	if (!(await fileExists(configFilePath))) {
 		return null;
 	}
 
 	try {
-		// Optimization: Lazy load jiti (~50ms saved)
-		if (!_jiti) {
-			const jitiModule = await import("jiti");
-			const createJiti = jitiModule.default;
-			_jiti = createJiti(__filename) as unknown as JitiInstance;
+		const jiti = await getJiti();
+		const configModule = jiti(configFilePath);
+
+		if (!configModule?.config) {
+			return null;
 		}
 
-		const configModule = _jiti(configFilePath);
-
-		if (configModule?.config) {
-			// Validate configuration structure at runtime
-			const result = v.safeParse(ConfigSchema, configModule.config);
-			if (!result.success) {
-				console.warn(
-					`Invalid configuration in ${configFileName}:`,
-					v.flatten(result.issues).nested,
-				);
-			}
-
-			const config = configModule.config as TSGitHookConfig;
-
-			// Normalize all hook names to camelCase for internal consistency.
-			const normalizedConfig: TSGitHookConfig = {};
-
-			for (const [hookName, hookValue] of Object.entries(config)) {
-				if (hookValue) {
-					const camelCaseHookName = kebabToCamel(hookName) as CamelCaseGitHook;
-					// biome-ignore lint/suspicious/noExplicitAny: Dynamic assignment across mapped types requires any
-					normalizedConfig[camelCaseHookName] = hookValue as any;
-				}
-			}
-			_memoizedConfig = normalizedConfig;
-			return _memoizedConfig;
+		// Validate configuration structure at runtime
+		const result = v.safeParse(ConfigSchema, configModule.config);
+		if (!result.success) {
+			console.warn(
+				`Invalid configuration in ${configFileName}:`,
+				v.flatten(result.issues).nested,
+			);
 		}
 
-		return null;
+		_memoizedConfig = normalizeConfig(configModule.config as TSGitHookConfig);
+		return _memoizedConfig;
 	} catch (error: unknown) {
 		// For other errors, log them as they might be syntax errors in the config.
 		console.error(`Error loading ${configFileName}:`, error);
