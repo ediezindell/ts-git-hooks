@@ -451,16 +451,16 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 					initialGitStatus.stagedFiles,
 					initialGitStatus.untrackedItems,
 					initialGitStatus.unstagedChangesExist,
-				] as const;
+				] as [string[], string[], boolean];
 			}
 
 			// If we didn't fetch status yet (needsStash was false), but we need staged files (e.g. glob hook in commit-msg?)
 			if (needsStagedFiles) {
 				const staged = await getStagedFiles();
-				return [staged, [], false] as const;
+				return [staged, [], false] as [string[], string[], boolean];
 			}
 
-			return [[], [], false] as const;
+			return [[], [], false] as [string[], string[], boolean];
 		})();
 
 	const { scripts: finalScripts, matchedFiles } = await resolveScriptsToRun(
