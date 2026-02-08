@@ -6,8 +6,7 @@ import { logger } from "../utils/logger";
 
 const configFileName = "git-hooks.config.ts";
 
-// Updated content that imports the generated types
-const defaultConfigContent = `\
+const DEFAULT_CONFIG_CONTENT = `\
 import type { TSGitHookConfig } from 'ts-git-hooks';
 import type { PackageScripts } from './git-hooks.d.ts';
 
@@ -33,9 +32,11 @@ export async function init() {
 		return;
 	}
 
+	let created = false;
 	try {
 		// Create the main config file
-		await fs.writeFile(configFilePath, defaultConfigContent, "utf-8");
+		await fs.writeFile(configFilePath, DEFAULT_CONFIG_CONTENT, "utf-8");
+		created = true;
 		logger.success(`Configuration file created at "${configFileName}"`);
 
 		// Generate the types from package.json
@@ -43,9 +44,10 @@ export async function init() {
 	} catch (error) {
 		logger.error("Failed to create configuration file:");
 		logger.error(error);
-		// In case of error, clean up the created config file
-		if (await fileExists(configFilePath)) {
-			await fs.unlink(configFilePath);
+
+		// In case of error, clean up the created config file if we were the ones who created it
+		if (created) {
+			await fs.unlink(configFilePath).catch(() => {});
 		}
 	}
 }
