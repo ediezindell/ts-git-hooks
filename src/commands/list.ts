@@ -1,24 +1,38 @@
 import { isGlobHookConfig, loadConfig } from "../core/config";
-import type { CamelCaseGitHook, Command, HookConfig } from "../types";
+import type { CamelCaseGitHook, Command, Script } from "../types";
 import { toKebabCase } from "../utils/casing";
 import { logger } from "../utils/logger";
 
-function scriptsToString<T extends string>(script: HookConfig<T>): string {
+/**
+ * Converts a script configuration to a human-readable string.
+ * @param script The script configuration to format.
+ * @returns A comma-separated string of commands.
+ */
+function formatScriptConfig<T extends string>(script: Script<T>): string {
 	const formatCommand = (command: Command<T>): string => {
+		// If it's a tuple [script, argsFn], only show the script name.
 		if (Array.isArray(command)) {
-			return String(command[0]);
+			return command[0];
 		}
-		return String(command);
+		return command;
 	};
 
+	// Normalize to an array of commands
+	let commands: Command<T>[];
+
 	if (Array.isArray(script)) {
-		// It could be Command<T>[] or a single Command<T> that is a tuple [string, ArgsFn]
+		// Check if it's a single Command tuple [string, ArgsFn]
+		// or an array of Commands.
 		if (script.length === 2 && typeof script[1] === "function") {
-			return (script as [T, (files: string[]) => string])[0];
+			commands = [script as Command<T>];
+		} else {
+			commands = script as Command<T>[];
 		}
-		return (script as Command<T>[]).map(formatCommand).join(", ");
+	} else {
+		commands = [script as Command<T>];
 	}
-	return formatCommand(script as Command<T>);
+
+	return commands.map(formatCommand).join(", ");
 }
 
 /**
@@ -52,11 +66,11 @@ export async function list() {
 		if (isGlobHookConfig(hookConfig)) {
 			logger.log(`  - ${kebabCaseHookName}:`);
 			for (const [glob, script] of Object.entries(hookConfig)) {
-				logger.log(`    - ${glob}: ${scriptsToString(script)}`);
+				logger.log(`    - ${glob}: ${formatScriptConfig(script)}`);
 			}
 		} else {
 			// Unconditional hook
-			const scripts = scriptsToString(hookConfig);
+			const scripts = formatScriptConfig(hookConfig);
 			logger.log(`  - ${kebabCaseHookName}: ${scripts}`);
 		}
 	}
