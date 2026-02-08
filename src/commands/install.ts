@@ -4,7 +4,7 @@ import { loadConfig } from "../core/config";
 import type { CamelCaseGitHook, KebabCaseGitHook } from "../types";
 import { toKebabCase } from "../utils/casing";
 import { logger } from "../utils/logger";
-import { getPackageManager } from "../utils/packageManager";
+import { type PackageManager, getPackageManager } from "../utils/packageManager";
 
 const gitHooksDir = path.join(process.cwd(), ".git", "hooks");
 
@@ -19,6 +19,28 @@ const hookScriptContent = (command: string) => `#!/bin/sh
 
 ${command}
 `;
+
+/**
+ * Generates the shell command for a git hook, including an optimization for local execution.
+ * @param packageManager The detected package manager.
+ * @param hookName The kebab-case name of the git hook.
+ */
+function getHookExecutionCommand(
+	packageManager: PackageManager,
+	hookName: string,
+): string {
+	const fallbackCommand =
+		packageManager === "npm"
+			? `exec npm exec ts-git-hooks run ${hookName}`
+			: `exec ${packageManager} ts-git-hooks run ${hookName}`;
+
+	// Optimization: Check for local binary to bypass package manager overhead (~300ms for npm exec).
+	return `if [ -x "./node_modules/.bin/ts-git-hooks" ]; then
+  exec ./node_modules/.bin/ts-git-hooks run ${hookName}
+else
+  ${fallbackCommand}
+fi`;
+}
 
 /**
  * Installs the git hooks based on the configuration file.
@@ -48,25 +70,10 @@ export async function install() {
 				const kebabCaseHookName = toKebabCase(hookName);
 				const hookPath = path.join(gitHooksDir, kebabCaseHookName);
 
-				let fallbackCommand = "";
-				switch (packageManager) {
-					case "npm":
-						fallbackCommand = `exec npm exec ts-git-hooks run ${kebabCaseHookName}`;
-						break;
-					case "yarn":
-					case "pnpm":
-						fallbackCommand = `exec ${packageManager} ts-git-hooks run ${kebabCaseHookName}`;
-						break;
-				}
-
-				// Optimization: Check for local binary to bypass package manager overhead (~300ms for npm exec).
-				// This optimization is now applied to all package managers as direct execution is always faster.
-				const command = `if [ -x "./node_modules/.bin/ts-git-hooks" ]; then
-  exec ./node_modules/.bin/ts-git-hooks run ${kebabCaseHookName}
-else
-  ${fallbackCommand}
-fi`;
-
+				const command = getHookExecutionCommand(
+					packageManager,
+					kebabCaseHookName,
+				);
 				const scriptContent = hookScriptContent(command);
 
 				// 2. Write the hook script file.
