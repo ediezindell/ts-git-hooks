@@ -1,12 +1,7 @@
 import { isGlobHookConfig, loadConfig } from "../core/config";
-import type {
-	CamelCaseGitHook,
-	Command,
-	HookConfig,
-	KebabCaseGitHook,
-} from "../types";
-import { logger } from "../utils/logger";
+import type { CamelCaseGitHook, Command, HookConfig } from "../types";
 import { toKebabCase } from "../utils/casing";
+import { logger } from "../utils/logger";
 
 function scriptsToString<T extends string>(script: HookConfig<T>): string {
 	const formatCommand = (command: Command<T>): string => {
