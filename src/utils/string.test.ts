@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	camelToKebab,
-	kebabToCamel,
-	parseNullSeparatedList,
-} from "./string";
+import { camelToKebab, kebabToCamel, parseNullSeparatedList } from "./string";
 
 describe("kebabToCamel", () => {
 	it("should convert kebab-case to camelCase", () => {
