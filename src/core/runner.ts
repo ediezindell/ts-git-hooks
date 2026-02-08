@@ -428,13 +428,110 @@ async function safeRestore(options: {
 }
 
 /**
+ * Determines the Git status (staged, untracked, unstaged) based on the hook configuration and current environment.
+ */
+async function determineGitStatus(
+	needsStash: boolean,
+	needsStagedFiles: boolean,
+	initialGitStatus: {
+		stagedFiles: string[];
+		untrackedItems: string[];
+		unstagedChangesExist: boolean;
+	} | null,
+): Promise<{
+	stagedFiles: string[];
+	untrackedItems: string[];
+	unstagedChangesExist: boolean;
+}> {
+	// If we already fetched status (because needsStash was true), return it
+	if (initialGitStatus) {
+		return initialGitStatus;
+	}
+
+	// If we didn't fetch status yet (needsStash was false), but we need staged files (e.g. glob hook in commit-msg?)
+	if (needsStagedFiles) {
+		const staged = await getStagedFiles();
+		return {
+			stagedFiles: staged,
+			untrackedItems: [],
+			unstagedChangesExist: false,
+		};
+	}
+
+	return { stagedFiles: [], untrackedItems: [], unstagedChangesExist: false };
+}
+
+/**
+ * Registers signal handlers for SIGINT and SIGTERM to ensure cleanup is performed.
+ * @returns A cleanup function to remove the handlers.
+ */
+function registerSignalHandlers(onSignal: (code: number) => void): () => void {
+	const onSigInt = () => onSignal(130);
+	const onSigTerm = () => onSignal(143);
+
+	process.on("SIGINT", onSigInt);
+	process.on("SIGTERM", onSigTerm);
+
+	return () => {
+		process.off("SIGINT", onSigInt);
+		process.off("SIGTERM", onSigTerm);
+	};
+}
+
+/**
+ * Performs "Hybrid Stashing": backs up untracked files physically and stashes tracked unstaged changes.
+ */
+async function performHybridStashing(
+	untrackedItems: string[],
+	unstagedChangesExist: boolean,
+): Promise<{ evacuatedDir: string | null; stashCreated: boolean }> {
+	let evacuatedDir: string | null = null;
+	let stashCreated = false;
+	const stashTasks: Promise<void>[] = [];
+
+	// 1. Untracked Files (Physical Backup)
+	if (untrackedItems.length > 0) {
+		evacuatedDir = join(
+			".git",
+			"ts-git-hooks",
+			"backups",
+			`${process.pid}_${Date.now()}`,
+		);
+		stashTasks.push(
+			evacuateFiles(untrackedItems, evacuatedDir).then(() => {
+				logger.info(
+					`Evacuated ${untrackedItems.length} untracked items to physical backup.`,
+				);
+			}),
+		);
+	}
+
+	// 2. Tracked Files (Conditional git stash)
+	if (unstagedChangesExist) {
+		stashTasks.push(
+			stashPushKeepIndex().then((created) => {
+				stashCreated = created;
+				if (stashCreated) {
+					logger.info("Stashed unstaged tracked changes.");
+				}
+			}),
+		);
+	}
+
+	if (stashTasks.length > 0) {
+		await Promise.all(stashTasks);
+	}
+
+	return { evacuatedDir, stashCreated };
+}
+
+/**
  * Runs the configured scripts for a given git hook.
  * @param hookName The name of the git hook being triggered.
  * @returns A promise that resolves to `true` if the hook succeeds, `false` otherwise.
  */
 export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	// Optimization: Start checking git status immediately if we know we'll likely need it (e.g. pre-commit)
-	// This runs in parallel with config loading.
 	const needsStash = !hooksSkippingStash.has(hookName);
 
 	const [config, initialGitStatus] = await Promise.all([
@@ -455,25 +552,8 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	// Determine if we need staged files based on the now-loaded config
 	const needsStagedFiles = shouldFetchStagedFiles(hookConfig);
 
-	const [stagedFiles, untrackedItems, unstagedChangesExist] =
-		await (async () => {
-			// If we already fetched status (because needsStash was true), return it
-			if (initialGitStatus) {
-				return [
-					initialGitStatus.stagedFiles,
-					initialGitStatus.untrackedItems,
-					initialGitStatus.unstagedChangesExist,
-				] as [string[], string[], boolean];
-			}
-
-			// If we didn't fetch status yet (needsStash was false), but we need staged files (e.g. glob hook in commit-msg?)
-			if (needsStagedFiles) {
-				const staged = await getStagedFiles();
-				return [staged, [], false] as [string[], string[], boolean];
-			}
-
-			return [[], [], false] as [string[], string[], boolean];
-		})();
+	const { stagedFiles, untrackedItems, unstagedChangesExist } =
+		await determineGitStatus(needsStash, needsStagedFiles, initialGitStatus);
 
 	const { scripts: finalScripts, matchedFiles } = await resolveScriptsToRun(
 		hookConfig,
@@ -489,73 +569,31 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	let evacuatedDir: string | null = null;
 	let restorationCalled = false;
 
-	/**
-	 * Guarded restoration function to ensure it only runs once.
-	 */
 	const performRestoration = async (silent = false) => {
 		if (restorationCalled) return;
 		restorationCalled = true;
 		await safeRestore({ stashCreated, evacuatedDir, silent });
 	};
 
-	const onSigInt = () => onSignal(130);
-	const onSigTerm = () => onSignal(143);
-
-	// Register signal handlers for robust restoration (Failure-safe requirement)
-	async function onSignal(code: number) {
+	const unregister = registerSignalHandlers(async (code) => {
 		await performRestoration(true);
 		process.exit(code);
-	}
-
-	process.on("SIGINT", onSigInt);
-	process.on("SIGTERM", onSigTerm);
+	});
 
 	try {
-		// Hybrid Stashing Implementation:
 		if (needsStash) {
-			const stashTasks: Promise<void>[] = [];
-
-			// 2. Untracked Files (Physical Backup)
-			if (untrackedItems.length > 0) {
-				evacuatedDir = join(
-					".git",
-					"ts-git-hooks",
-					"backups",
-					`${process.pid}_${Date.now()}`,
-				);
-				stashTasks.push(
-					evacuateFiles(untrackedItems, evacuatedDir).then(() => {
-						logger.info(
-							`Evacuated ${untrackedItems.length} untracked items to physical backup.`,
-						);
-					}),
-				);
-			}
-
-			// 3. Tracked Files (Conditional git stash)
-			// Check whether there are unstaged tracked changes.
-			if (unstagedChangesExist) {
-				// Only if unstaged changes exist: Run git stash push --keep-index
-				stashTasks.push(
-					stashPushKeepIndex().then((created) => {
-						stashCreated = created;
-						if (stashCreated) {
-							logger.info("Stashed unstaged tracked changes.");
-						}
-					}),
-				);
-			}
-
-			if (stashTasks.length > 0) {
-				await Promise.all(stashTasks);
-			}
+			const result = await performHybridStashing(
+				untrackedItems,
+				unstagedChangesExist,
+			);
+			stashCreated = result.stashCreated;
+			evacuatedDir = result.evacuatedDir;
 		}
 
-		// 4. Hook Execution
 		logger.info(`Running scripts for ${hookName}...`);
 		await Promise.all(finalScripts.map((script) => executeScript(script)));
 
-		// 5. For pre-commit, stage any changes made by the scripts
+		// For pre-commit, stage any changes made by the scripts
 		if (hookName === "pre-commit") {
 			const changedFiles = await getChangedFiles(matchedFiles ?? undefined);
 			if (changedFiles.length > 0) {
@@ -573,11 +611,7 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		}
 		return false;
 	} finally {
-		// Remove signal handlers to avoid memory leaks and double restoration
-		process.off("SIGINT", onSigInt);
-		process.off("SIGTERM", onSigTerm);
-
-		// 6. Restoration (MUST be failure-safe)
+		unregister();
 		await performRestoration(false);
 	}
 }
