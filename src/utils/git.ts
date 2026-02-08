@@ -172,19 +172,17 @@ export async function evacuateFiles(
 
 	for (const item of items) {
 		// Optimization: Use endsWith instead of regex for faster trailing slash removal.
-		const normalizedItem = item.endsWith("/") ? item.slice(0, -1) : item;
-		const itemDir = dirname(normalizedItem);
+		const src = item.endsWith("/") ? item.slice(0, -1) : item;
+		const itemDir = dirname(src);
 
 		let parentDirInBackup = dirCache.get(itemDir);
 		if (parentDirInBackup === undefined) {
 			parentDirInBackup = join(backupDir, itemDir);
 			dirCache.set(itemDir, parentDirInBackup);
+			parentDirs.add(parentDirInBackup);
 		}
 
-		const dest = join(backupDir, normalizedItem);
-
-		parentDirs.add(parentDirInBackup);
-		moves.push({ src: normalizedItem, dest });
+		moves.push({ src, dest: join(backupDir, src) });
 	}
 
 	// 1. Create all parent directories in parallel
@@ -203,13 +201,20 @@ export async function evacuateFiles(
  */
 export async function restoreFiles(backupDir: string): Promise<void> {
 	// Optimization: Cache mkdir promises to avoid race conditions and redundant calls during parallel execution.
-	const mkdirCache = new Map<string, Promise<string | undefined>>();
-	const ensureDir = (dir: string) => {
+	const mkdirCache = new Map<string, Promise<void>>();
+
+	const ensureDir = (dir: string): Promise<void> => {
 		if (dir === ".") return Promise.resolve();
-		if (!mkdirCache.has(dir)) {
-			mkdirCache.set(dir, mkdir(dir, { recursive: true }));
-		}
-		return mkdirCache.get(dir) as Promise<string | undefined>;
+
+		const cached = mkdirCache.get(dir);
+		if (cached) return cached;
+
+		const promise = (async () => {
+			await mkdir(dir, { recursive: true });
+		})();
+
+		mkdirCache.set(dir, promise);
+		return promise;
 	};
 
 	const walk = async (currentDir: string) => {
@@ -234,8 +239,7 @@ export async function restoreFiles(backupDir: string): Promise<void> {
 						);
 					} else {
 						// Destination does not exist: move the whole directory
-						const parentDir = dirname(dest);
-						await ensureDir(parentDir);
+						await ensureDir(dirname(dest));
 						await rename(src, dest);
 					}
 				} else {
@@ -246,8 +250,7 @@ export async function restoreFiles(backupDir: string): Promise<void> {
 						);
 					}
 					// Move the file, potentially overwriting if it was a file (not recommended, but better than dropping)
-					const parentDir = dirname(dest);
-					await ensureDir(parentDir);
+					await ensureDir(dirname(dest));
 					await rename(src, dest);
 				}
 			}),
