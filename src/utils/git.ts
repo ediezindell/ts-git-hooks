@@ -293,40 +293,51 @@ export async function getGitStatus(): Promise<{
 	// -z: null-terminated output
 	// --porcelain=v1: stable output format
 	const buf = await execGitBuffer(["status", "--porcelain=v1", "-z"]);
-	const items = parseNullSeparatedBuffer(buf);
 
 	const stagedFiles: string[] = [];
 	const untrackedItems: string[] = [];
 	let unstagedChangesExist = false;
 
-	for (let i = 0; i < items.length; i++) {
-		const item = items[i];
-		if (item.length < 4) continue;
+	let start = 0;
+	while (start < buf.length) {
+		const end = buf.indexOf(0, start);
+		if (end === -1) break;
 
-		const x = item[0];
-		const y = item[1];
-		const path = item.slice(3);
+		// Status code is at start, start+1. Space at start+2. Path starts at start+3.
+		// XY PATH\0
+		const x = buf[start]; // ASCII byte
+		const y = buf[start + 1]; // ASCII byte
+		const pathStart = start + 3;
 
-		// 1. Untracked
-		if (x === "?" && y === "?") {
-			untrackedItems.push(path);
-			continue;
-		}
+		// 63 is '?'
+		// 1. Untracked (??)
+		if (x === 63 && y === 63) {
+			untrackedItems.push(buf.toString("utf8", pathStart, end));
+		} else {
+			// 2. Staged (A=65, M=77, R=82, C=67)
+			if (x === 65 || x === 77 || x === 82 || x === 67) {
+				stagedFiles.push(buf.toString("utf8", pathStart, end));
+			}
 
-		// 2. Staged (matching --diff-filter=ACMR: Added, Modified, Renamed, Copied)
-		if (x === "A" || x === "M" || x === "R" || x === "C") {
-			stagedFiles.push(path);
-			// For renames and copies, the next null-terminated item is the old path
-			if (x === "R" || x === "C") {
-				i++; // Skip the old path
+			// 3. Unstaged changes (Modified, Deleted, Type changed, or Unmerged in work tree)
+			// Any non-space (32) value in Y (except for untracked ??) means worktree differs from index.
+			// We already handled ?? case above.
+			if (y !== 32) {
+				unstagedChangesExist = true;
 			}
 		}
 
-		// 3. Unstaged changes (Modified, Deleted, Type changed, or Unmerged in work tree)
-		// Any non-space value in Y (except for untracked ??) means worktree differs from index.
-		if (y !== " " && y !== "?") {
-			unstagedChangesExist = true;
+		// Handle Rename (R=82) / Copy (C=67) second path
+		// The next null-terminated string is the old path. We just skip it.
+		if (x === 82 || x === 67) {
+			const nextEnd = buf.indexOf(0, end + 1);
+			if (nextEnd !== -1) {
+				start = nextEnd + 1;
+				continue;
+			}
 		}
+
+		start = end + 1;
 	}
 
 	return { stagedFiles, untrackedItems, unstagedChangesExist };

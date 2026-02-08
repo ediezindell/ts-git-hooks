@@ -126,6 +126,14 @@
 
 
 
+
+
+
+
+
+
+
+
 **Learning:** Decoding large git outputs into UTF-8 strings before parsing is expensive in terms of both CPU and memory. Processing raw `Buffer` data directly using `Buffer.indexOf(0)` and only decoding individual filenames is significantly more efficient for repositories with many files. Additionally, pre-computing command keys in the pattern loop avoids redundant computations during grouping.
 
 
@@ -134,7 +142,31 @@
 
 
 
-**Action:** Implemented `execGitBuffer` and `parseNullSeparatedBuffer` to process raw binary data. Refactored `resolveScriptsToRun` to pre-calculate command keys.
+
+
+
+
+
+
+
+
+**Action:** Implemented `execGitBuffer` and `parseNullSeparatedBuffer` to process raw binary data. Refactored `resolveScriptsToRun` to pre-calculate command keys. Optimized `getGitStatus` to parse `Buffer` directly, avoiding all intermediate string allocations.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
