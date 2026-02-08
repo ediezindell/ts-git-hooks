@@ -260,7 +260,8 @@ export async function resolveScriptsToRun(
 							micromatchCache.set(cacheKey, matchingFiles);
 						}
 
-						if (matchingFiles.length > 0) addCommandBatch([command], matchingFiles);
+						if (matchingFiles.length > 0)
+							addCommandBatch([command], matchingFiles);
 					}
 				}
 			}
