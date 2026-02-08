@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { join } from "node:path";
 import type { Options } from "micromatch";
 import type {
