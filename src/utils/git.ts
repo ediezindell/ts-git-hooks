@@ -324,30 +324,38 @@ export async function getGitStatus(): Promise<{
 		const end = buf.indexOf(0, start);
 		if (end === -1) break;
 
-		// Status code is at start, start+1. Space at start+2. Path starts at start+3.
-		// XY PATH\0
-		const x = buf[start];
-		const y = buf[start + 1];
+		// The porcelain v1 output format is "XY PATH\0" (when using -z)
+		// X: Status in the index (staged changes)
+		// Y: Status in the working tree (unstaged changes)
+		const indexStatus = buf[start];
+		const workTreeStatus = buf[start + 1];
 		const pathStart = start + 3;
 
-		// 1. Untracked (??)
-		if (x === ASCII.QUESTION && y === ASCII.QUESTION) {
+		// 1. Untracked items are denoted by "??" status
+		if (indexStatus === ASCII.QUESTION && workTreeStatus === ASCII.QUESTION) {
 			untrackedItems.push(buf.toString("utf8", pathStart, end));
 		} else {
-			// 2. Staged (A=Added, M=Modified, R=Renamed, C=Copied)
-			if (x === ASCII.A || x === ASCII.M || x === ASCII.R || x === ASCII.C) {
+			// 2. Staged files (A=Added, M=Modified, R=Renamed, C=Copied in the index)
+			const isStaged =
+				indexStatus === ASCII.A ||
+				indexStatus === ASCII.M ||
+				indexStatus === ASCII.R ||
+				indexStatus === ASCII.C;
+
+			if (isStaged) {
 				stagedFiles.push(buf.toString("utf8", pathStart, end));
 			}
 
-			// 3. Unstaged changes (Modified, Deleted, Type changed, or Unmerged in work tree)
-			// Any non-space value in Y (except for untracked ??) means worktree differs from index.
-			if (y !== ASCII.SPACE) {
+			// 3. Unstaged changes exist if the working tree status (Y) is not a space.
+			// This includes Modified (M), Deleted (D), Type changed (T), or Unmerged (U).
+			if (workTreeStatus !== ASCII.SPACE) {
 				unstagedChangesExist = true;
 			}
 		}
 
-		// Handle Rename (R) / Copy (C) which have a second (old) path: XY PATH\0ORIG_PATH\0
-		if (x === ASCII.R || x === ASCII.C) {
+		// Handle Rename (R) or Copy (C) which include a second path (the original source):
+		// "XY DEST_PATH\0ORIG_PATH\0"
+		if (indexStatus === ASCII.R || indexStatus === ASCII.C) {
 			const nextEnd = buf.indexOf(0, end + 1);
 			if (nextEnd !== -1) {
 				start = nextEnd + 1;
