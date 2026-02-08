@@ -72,6 +72,30 @@
 
 ## 2026-02-08 - Secondary performance and robustness improvements
 
+
+
 **Learning:** Minor optimizations across the codebase contribute to overall snappiness. Memoizing `loadConfig` in memory benefits repeated calls in test environments. Improving signal handler removal ensures cleaner resource management. Avoiding redundant string conversions in the `execGit` error path slightly reduces memory pressure during failures.
 
+
+
 **Action:** Implemented in-memory memoization for `loadConfig`, switched to `process.off` for precise signal handler removal, and optimized the `execGit` error path.
+
+
+
+
+
+
+
+## 2026-02-08 - Micro-optimizations for runner and installer
+
+
+
+**Learning:** Reducing redundant work in hot paths further improves performance. Skipping the second `micromatch` pass when only one pattern exists saves processing time. Parallelizing hook installation speeds up the `install` command. Simple string checks (`includes`) are faster than regex when used for presence checks.
+
+
+
+**Action:** Optimized `resolveScriptsToRun` to skip redundant matching, parallelized `install` hook writing, and replaced regex with `includes` in `kebabToCamel` and `parseSimpleCommand`.
+
+
+
+

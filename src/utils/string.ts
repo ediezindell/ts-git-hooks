@@ -3,8 +3,10 @@
  * @param str The string to convert.
  * @returns The camelCased string.
  */
-export const kebabToCamel = (str: string) =>
-	str.replace(/-(\w)/g, (_, c) => c.toUpperCase());
+export const kebabToCamel = (str: string) => {
+	if (!str.includes("-")) return str;
+	return str.replace(/-(\w)/g, (_, c) => c.toUpperCase());
+};
 
 /**
  * Converts a camelCase string to kebab-case.

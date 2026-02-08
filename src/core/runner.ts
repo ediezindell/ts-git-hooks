@@ -50,8 +50,13 @@ function parseSimpleCommand(
 	command: string,
 	extraArgs: string[] = [],
 ): Executable {
-	// Optimization: Split simple commands to avoid shell spawn.
-	// This works for "test", "lint --fix", etc.
+	// Optimization: For commands without arguments, we can split faster.
+	if (!command.includes(" ")) {
+		return extraArgs.length > 0
+			? { script: command, args: extraArgs }
+			: { script: command, args: [] };
+	}
+
 	const parts = command.split(/\s+/).filter((part) => part !== "");
 	const script = parts[0];
 	const args =
@@ -205,42 +210,48 @@ export async function resolveScriptsToRun(
 			});
 
 			if (matchedFiles.length > 0) {
-				// 2. Group patterns by command to minimize micromatch calls.
-				// Use Map with string keys for O(1) lookup.
-				const keyToPatterns = new Map<string, string[]>();
-				const keyToCommand = new Map<string, Command<string>>();
+				// Optimization: If there's only one pattern, matchedFiles is already our result.
+				if (patterns.length === 1) {
+					const command = getCommands(hookConfig[patterns[0]]);
+					processListOfCommands(command, matchedFiles);
+				} else {
+					// 2. Group patterns by command to minimize micromatch calls.
+					// Use Map with string keys for O(1) lookup.
+					const keyToPatterns = new Map<string, string[]>();
+					const keyToCommand = new Map<string, Command<string>>();
 
-				for (const [pattern, script] of Object.entries(hookConfig)) {
-					const commands = getCommands(script);
-					for (const command of commands) {
-						const key = getCommandKey(command);
-						if (!keyToCommand.has(key)) {
-							keyToCommand.set(key, command);
-						}
+					for (const [pattern, script] of Object.entries(hookConfig)) {
+						const commands = getCommands(script);
+						for (const command of commands) {
+							const key = getCommandKey(command);
+							if (!keyToCommand.has(key)) {
+								keyToCommand.set(key, command);
+							}
 
-						let patternList = keyToPatterns.get(key);
-						if (!patternList) {
-							patternList = [];
-							keyToPatterns.set(key, patternList);
+							let patternList = keyToPatterns.get(key);
+							if (!patternList) {
+								patternList = [];
+								keyToPatterns.set(key, patternList);
+							}
+							patternList.push(pattern);
 						}
-						patternList.push(pattern);
 					}
-				}
 
-				// 3. Run micromatch for each unique command group
-				for (const [key, patternsForCommand] of keyToPatterns) {
-					const command = keyToCommand.get(key);
-					if (!command) continue;
+					// 3. Run micromatch for each unique command group
+					for (const [key, patternsForCommand] of keyToPatterns) {
+						const command = keyToCommand.get(key);
+						if (!command) continue;
 
-					// Optimization: Use matchedFiles instead of stagedFiles.
-					// Since matchedFiles is the subset of stagedFiles that matched ANY pattern,
-					// any file matching patternsForCommand MUST be in matchedFiles.
-					const matchingFiles = mm(matchedFiles, patternsForCommand, {
-						matchBase: true,
-					});
+						// Optimization: Use matchedFiles instead of stagedFiles.
+						// Since matchedFiles is the subset of stagedFiles that matched ANY pattern,
+						// any file matching patternsForCommand MUST be in matchedFiles.
+						const matchingFiles = mm(matchedFiles, patternsForCommand, {
+							matchBase: true,
+						});
 
-					if (matchingFiles.length > 0) {
-						processListOfCommands([command], matchingFiles);
+						if (matchingFiles.length > 0) {
+							processListOfCommands([command], matchingFiles);
+						}
 					}
 				}
 			}
