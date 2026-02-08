@@ -13,8 +13,8 @@
 		"lint": "biome lint .",
 		"format": "biome format --write src",
 		"check": "biome check --write src",
-		"build": "tsc",
-		"typecheck": "tsgo",
+		"build": "tsgo",
+		"typecheck": "tsgo --noEmit",
 		"prepare": "npm run build",
 		"echo": "echo"
 	},
