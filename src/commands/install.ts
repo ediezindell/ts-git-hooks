@@ -4,7 +4,10 @@ import { loadConfig } from "../core/config";
 import type { CamelCaseGitHook, KebabCaseGitHook } from "../types";
 import { toKebabCase } from "../utils/casing";
 import { logger } from "../utils/logger";
-import { type PackageManager, getPackageManager } from "../utils/packageManager";
+import {
+	getPackageManager,
+	type PackageManager,
+} from "../utils/packageManager";
 
 const gitHooksDir = path.join(process.cwd(), ".git", "hooks");
 
