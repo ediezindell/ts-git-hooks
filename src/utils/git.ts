@@ -19,12 +19,12 @@ const ASCII = {
 /**
  * Status codes that indicate a file is staged in the index.
  */
-const STAGED_CODES = new Set([ASCII.A, ASCII.M, ASCII.R, ASCII.C]);
+const STAGED_CODES = new Set<number>([ASCII.A, ASCII.M, ASCII.R, ASCII.C]);
 
 /**
  * Status codes that indicate a rename or copy operation, followed by a second path.
  */
-const RENAMED_OR_COPIED_CODES = new Set([ASCII.R, ASCII.C]);
+const RENAMED_OR_COPIED_CODES = new Set<number>([ASCII.R, ASCII.C]);
 
 /**
  * Promisified version of `spawn` for running git commands and getting the exit code.
@@ -344,7 +344,7 @@ export async function getGitStatus(): Promise<{
 			untrackedItems.push(buf.toString("utf8", pathStart, end));
 		} else {
 			// 2. Staged files (A=Added, M=Modified, R=Renamed, C=Copied in the index)
-			if (STAGED_CODES.has(indexStatus as any)) {
+			if (STAGED_CODES.has(indexStatus)) {
 				stagedFiles.push(buf.toString("utf8", pathStart, end));
 			}
 
@@ -357,7 +357,7 @@ export async function getGitStatus(): Promise<{
 
 		// Handle Rename (R) or Copy (C) which include a second path (the original source):
 		// "XY DEST_PATH\0ORIG_PATH\0"
-		if (RENAMED_OR_COPIED_CODES.has(indexStatus as any)) {
+		if (RENAMED_OR_COPIED_CODES.has(indexStatus)) {
 			const nextEnd = buf.indexOf(0, end + 1);
 			if (nextEnd !== -1) {
 				start = nextEnd + 1;
