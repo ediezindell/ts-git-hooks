@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { logger } from "./logger";
-import { parseNullSeparatedList } from "./string";
+import { parseNullSeparatedBuffer } from "./string";
 
 /**
  * Promisified version of `spawn` for running git commands and getting the exit code.
@@ -25,8 +25,9 @@ function execGitStatus(args: string[]): Promise<number> {
 /**
  * Promisified version of `spawn` for running git commands.
  * Uses `spawn` directly to avoid shell overhead and argument parsing issues.
+ * Returns the raw Buffer output for memory efficiency.
  */
-function execGit(args: string[]): Promise<string> {
+function execGitBuffer(args: string[]): Promise<Buffer> {
 	return new Promise((resolve, reject) => {
 		const child = spawn("git", args);
 		const stdoutChunks: Buffer[] = [];
@@ -41,14 +42,10 @@ function execGit(args: string[]): Promise<string> {
 		});
 
 		child.on("close", (code) => {
-			const stdout =
-				stdoutChunks.length === 1
-					? stdoutChunks[0].toString("utf8")
-					: Buffer.concat(stdoutChunks).toString("utf8");
-
 			if (code === 0) {
-				resolve(stdout);
+				resolve(Buffer.concat(stdoutChunks));
 			} else {
+				const stdout = Buffer.concat(stdoutChunks).toString("utf8");
 				const stderr = Buffer.concat(stderrChunks).toString("utf8");
 				// stderr is often used for progress indicators by git, so we only log it for actual errors.
 				const errorMessage = `Error executing: git ${args.join(" ")}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`;
@@ -64,20 +61,29 @@ function execGit(args: string[]): Promise<string> {
 }
 
 /**
+ * Promisified version of `spawn` for running git commands.
+ * Returns the output as a UTF-8 string.
+ */
+async function execGit(args: string[]): Promise<string> {
+	const buf = await execGitBuffer(args);
+	return buf.toString("utf8");
+}
+
+/**
  * Retrieves the list of staged files from git.
  * @returns A promise that resolves to an array of staged file paths.
  */
 export async function getStagedFiles(): Promise<string[]> {
 	// Use --diff-filter=ACMR to exclude deleted files (D).
 	// Use -z to avoid quoting filenames and handle special characters correctly.
-	const stdout = await execGit([
+	const buf = await execGitBuffer([
 		"diff",
 		"--cached",
 		"--name-only",
 		"--diff-filter=ACMR",
 		"-z",
 	]);
-	return parseNullSeparatedList(stdout);
+	return parseNullSeparatedBuffer(buf);
 }
 
 /**
@@ -124,8 +130,8 @@ export async function getChangedFiles(files?: string[]): Promise<string[]> {
 		args.push("--", ...files);
 	}
 
-	const stdout = await execGit(args);
-	return parseNullSeparatedList(stdout);
+	const buf = await execGitBuffer(args);
+	return parseNullSeparatedBuffer(buf);
 }
 
 /**
@@ -253,14 +259,14 @@ export async function restoreFiles(backupDir: string): Promise<void> {
 export async function getUntrackedFiles(): Promise<string[]> {
 	// -o: other (untracked), --exclude-standard: use standard ignore rules
 	// --directory: show directories as a whole if they are untracked
-	const stdout = await execGit([
+	const buf = await execGitBuffer([
 		"ls-files",
 		"--others",
 		"--exclude-standard",
 		"--directory",
 		"-z",
 	]);
-	return parseNullSeparatedList(stdout);
+	return parseNullSeparatedBuffer(buf);
 }
 
 /**
@@ -286,8 +292,8 @@ export async function getGitStatus(): Promise<{
 }> {
 	// -z: null-terminated output
 	// --porcelain=v1: stable output format
-	const stdout = await execGit(["status", "--porcelain=v1", "-z"]);
-	const items = parseNullSeparatedList(stdout);
+	const buf = await execGitBuffer(["status", "--porcelain=v1", "-z"]);
+	const items = parseNullSeparatedBuffer(buf);
 
 	const stagedFiles: string[] = [];
 	const untrackedItems: string[] = [];

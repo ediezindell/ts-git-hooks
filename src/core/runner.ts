@@ -220,10 +220,22 @@ export async function resolveScriptsToRun(
 					const keyToPatterns = new Map<string, string[]>();
 					const keyToCommand = new Map<string, Command<string>>();
 
-					for (const [pattern, script] of Object.entries(hookConfig)) {
-						const commands = getCommands(script);
-						for (const command of commands) {
-							const key = getCommandKey(command);
+					// Pre-calculate all commands and their keys
+					const patternToCommands = new Map<
+						string,
+						{ key: string; command: Command<string> }[]
+					>();
+					for (const pattern of patterns) {
+						const commands = getCommands(hookConfig[pattern]);
+						const cmdList = commands.map((command) => ({
+							key: getCommandKey(command),
+							command,
+						}));
+						patternToCommands.set(pattern, cmdList);
+					}
+
+					for (const [pattern, cmdList] of patternToCommands) {
+						for (const { key, command } of cmdList) {
 							if (!keyToCommand.has(key)) {
 								keyToCommand.set(key, command);
 							}

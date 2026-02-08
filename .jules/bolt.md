@@ -90,11 +90,59 @@
 
 
 
+
+
+
+
 **Learning:** Reducing redundant work in hot paths further improves performance. Skipping the second `micromatch` pass when only one pattern exists saves processing time. Parallelizing hook installation speeds up the `install` command. Simple string checks (`includes`) are faster than regex when used for presence checks.
 
 
 
+
+
+
+
 **Action:** Optimized `resolveScriptsToRun` to skip redundant matching, parallelized `install` hook writing, and replaced regex with `includes` in `kebabToCamel` and `parseSimpleCommand`.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 2026-02-08 - Buffer-based git processing and pre-computed keys
+
+
+
+
+
+
+
+**Learning:** Decoding large git outputs into UTF-8 strings before parsing is expensive in terms of both CPU and memory. Processing raw `Buffer` data directly using `Buffer.indexOf(0)` and only decoding individual filenames is significantly more efficient for repositories with many files. Additionally, pre-computing command keys in the pattern loop avoids redundant computations during grouping.
+
+
+
+
+
+
+
+**Action:** Implemented `execGitBuffer` and `parseNullSeparatedBuffer` to process raw binary data. Refactored `resolveScriptsToRun` to pre-calculate command keys.
+
+
+
+
+
+
+
+
 
 
 
