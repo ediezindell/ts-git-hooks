@@ -5,6 +5,28 @@ import { logger } from "./logger";
 import { parseNullSeparatedBuffer } from "./string";
 
 /**
+ * Git status ASCII codes for parsing --porcelain output.
+ */
+const ASCII = {
+	QUESTION: 63, // '?'
+	SPACE: 32, // ' '
+	A: 65, // 'A'
+	M: 77, // 'M'
+	R: 82, // 'R'
+	C: 67, // 'C'
+} as const;
+
+/**
+ * Status codes that indicate a file is staged in the index.
+ */
+const STAGED_CODES = new Set([ASCII.A, ASCII.M, ASCII.R, ASCII.C]);
+
+/**
+ * Status codes that indicate a rename or copy operation, followed by a second path.
+ */
+const RENAMED_OR_COPIED_CODES = new Set([ASCII.R, ASCII.C]);
+
+/**
  * Promisified version of `spawn` for running git commands and getting the exit code.
  * Uses `stdio: "ignore"` for maximum performance when output is not needed.
  */
@@ -288,18 +310,6 @@ export async function hasUnstagedChanges(): Promise<boolean> {
 }
 
 /**
- * Git status ASCII codes for parsing --porcelain output.
- */
-const ASCII = {
-	QUESTION: 63, // '?'
-	SPACE: 32, // ' '
-	A: 65,
-	M: 77,
-	R: 82,
-	C: 67,
-} as const;
-
-/**
  * Retrieves comprehensive git status in a single command.
  * Returns staged files, untracked items, and whether unstaged changes exist.
  * This is an optimization to avoid multiple process spawns.
@@ -334,13 +344,7 @@ export async function getGitStatus(): Promise<{
 			untrackedItems.push(buf.toString("utf8", pathStart, end));
 		} else {
 			// 2. Staged files (A=Added, M=Modified, R=Renamed, C=Copied in the index)
-			const isStaged =
-				indexStatus === ASCII.A ||
-				indexStatus === ASCII.M ||
-				indexStatus === ASCII.R ||
-				indexStatus === ASCII.C;
-
-			if (isStaged) {
+			if (STAGED_CODES.has(indexStatus as any)) {
 				stagedFiles.push(buf.toString("utf8", pathStart, end));
 			}
 
@@ -353,7 +357,7 @@ export async function getGitStatus(): Promise<{
 
 		// Handle Rename (R) or Copy (C) which include a second path (the original source):
 		// "XY DEST_PATH\0ORIG_PATH\0"
-		if (indexStatus === ASCII.R || indexStatus === ASCII.C) {
+		if (RENAMED_OR_COPIED_CODES.has(indexStatus as any)) {
 			const nextEnd = buf.indexOf(0, end + 1);
 			if (nextEnd !== -1) {
 				start = nextEnd + 1;
