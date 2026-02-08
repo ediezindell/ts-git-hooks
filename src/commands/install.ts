@@ -41,41 +41,43 @@ export async function install() {
 		const installedHooks: KebabCaseGitHook[] = [];
 		const hookNames = Object.keys(config) as CamelCaseGitHook[];
 
-		for (const hookName of hookNames) {
-			if (!config[hookName]) continue;
+		await Promise.all(
+			hookNames.map(async (hookName) => {
+				if (!config[hookName]) return;
 
-			const kebabCaseHookName = camelToKebab(hookName) as KebabCaseGitHook;
-			const hookPath = path.join(gitHooksDir, kebabCaseHookName);
+				const kebabCaseHookName = camelToKebab(hookName) as KebabCaseGitHook;
+				const hookPath = path.join(gitHooksDir, kebabCaseHookName);
 
-			let fallbackCommand = "";
-			switch (packageManager) {
-				case "npm":
-					fallbackCommand = `exec npm exec ts-git-hooks run ${kebabCaseHookName}`;
-					break;
-				case "yarn":
-				case "pnpm":
-					fallbackCommand = `exec ${packageManager} ts-git-hooks run ${kebabCaseHookName}`;
-					break;
-			}
+				let fallbackCommand = "";
+				switch (packageManager) {
+					case "npm":
+						fallbackCommand = `exec npm exec ts-git-hooks run ${kebabCaseHookName}`;
+						break;
+					case "yarn":
+					case "pnpm":
+						fallbackCommand = `exec ${packageManager} ts-git-hooks run ${kebabCaseHookName}`;
+						break;
+				}
 
-			// Optimization: Check for local binary to bypass package manager overhead (~300ms for npm exec).
-			// This optimization is now applied to all package managers as direct execution is always faster.
-			const command = `if [ -x "./node_modules/.bin/ts-git-hooks" ]; then
+				// Optimization: Check for local binary to bypass package manager overhead (~300ms for npm exec).
+				// This optimization is now applied to all package managers as direct execution is always faster.
+				const command = `if [ -x "./node_modules/.bin/ts-git-hooks" ]; then
   exec ./node_modules/.bin/ts-git-hooks run ${kebabCaseHookName}
 else
   ${fallbackCommand}
 fi`;
 
-			const scriptContent = hookScriptContent(command);
+				const scriptContent = hookScriptContent(command);
 
-			// 2. Write the hook script file.
-			await fs.writeFile(hookPath, scriptContent, "utf-8");
+				// 2. Write the hook script file.
+				await fs.writeFile(hookPath, scriptContent, "utf-8");
 
-			// 3. Make the hook script executable.
-			await fs.chmod(hookPath, 0o755);
+				// 3. Make the hook script executable.
+				await fs.chmod(hookPath, 0o755);
 
-			installedHooks.push(kebabCaseHookName);
-		}
+				installedHooks.push(kebabCaseHookName);
+			}),
+		);
 
 		if (installedHooks.length > 0) {
 			logger.success("ts-git-hooks installed successfully.");

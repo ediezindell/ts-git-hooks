@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { logger } from "./logger";
-import { parseNullSeparatedList } from "./string";
+import { parseNullSeparatedBuffer } from "./string";
 
 /**
  * Promisified version of `spawn` for running git commands and getting the exit code.
@@ -25,8 +25,9 @@ function execGitStatus(args: string[]): Promise<number> {
 /**
  * Promisified version of `spawn` for running git commands.
  * Uses `spawn` directly to avoid shell overhead and argument parsing issues.
+ * Returns the raw Buffer output for memory efficiency.
  */
-function execGit(args: string[]): Promise<string> {
+function execGitBuffer(args: string[]): Promise<Buffer> {
 	return new Promise((resolve, reject) => {
 		const child = spawn("git", args);
 		const stdoutChunks: Buffer[] = [];
@@ -42,10 +43,7 @@ function execGit(args: string[]): Promise<string> {
 
 		child.on("close", (code) => {
 			if (code === 0) {
-				// Optimization: Collect all buffers and decode once at the end.
-				// This is faster and more memory-efficient than decoding chunk by chunk.
-				const stdout = Buffer.concat(stdoutChunks).toString("utf8");
-				resolve(stdout);
+				resolve(Buffer.concat(stdoutChunks));
 			} else {
 				const stdout = Buffer.concat(stdoutChunks).toString("utf8");
 				const stderr = Buffer.concat(stderrChunks).toString("utf8");
@@ -63,20 +61,29 @@ function execGit(args: string[]): Promise<string> {
 }
 
 /**
+ * Promisified version of `spawn` for running git commands.
+ * Returns the output as a UTF-8 string.
+ */
+async function execGit(args: string[]): Promise<string> {
+	const buf = await execGitBuffer(args);
+	return buf.toString("utf8");
+}
+
+/**
  * Retrieves the list of staged files from git.
  * @returns A promise that resolves to an array of staged file paths.
  */
 export async function getStagedFiles(): Promise<string[]> {
 	// Use --diff-filter=ACMR to exclude deleted files (D).
 	// Use -z to avoid quoting filenames and handle special characters correctly.
-	const stdout = await execGit([
+	const buf = await execGitBuffer([
 		"diff",
 		"--cached",
 		"--name-only",
 		"--diff-filter=ACMR",
 		"-z",
 	]);
-	return parseNullSeparatedList(stdout);
+	return parseNullSeparatedBuffer(buf);
 }
 
 /**
@@ -123,8 +130,8 @@ export async function getChangedFiles(files?: string[]): Promise<string[]> {
 		args.push("--", ...files);
 	}
 
-	const stdout = await execGit(args);
-	return parseNullSeparatedList(stdout);
+	const buf = await execGitBuffer(args);
+	return parseNullSeparatedBuffer(buf);
 }
 
 /**
@@ -252,14 +259,14 @@ export async function restoreFiles(backupDir: string): Promise<void> {
 export async function getUntrackedFiles(): Promise<string[]> {
 	// -o: other (untracked), --exclude-standard: use standard ignore rules
 	// --directory: show directories as a whole if they are untracked
-	const stdout = await execGit([
+	const buf = await execGitBuffer([
 		"ls-files",
 		"--others",
 		"--exclude-standard",
 		"--directory",
 		"-z",
 	]);
-	return parseNullSeparatedList(stdout);
+	return parseNullSeparatedBuffer(buf);
 }
 
 /**
@@ -271,4 +278,67 @@ export async function hasUnstagedChanges(): Promise<boolean> {
 	// git diff --quiet returns 1 if there are changes, 0 if not.
 	const code = await execGitStatus(["diff", "--quiet"]);
 	return code !== 0;
+}
+
+/**
+ * Retrieves comprehensive git status in a single command.
+ * Returns staged files, untracked items, and whether unstaged changes exist.
+ * This is an optimization to avoid multiple process spawns.
+ */
+export async function getGitStatus(): Promise<{
+	stagedFiles: string[];
+	untrackedItems: string[];
+	unstagedChangesExist: boolean;
+}> {
+	// -z: null-terminated output
+	// --porcelain=v1: stable output format
+	const buf = await execGitBuffer(["status", "--porcelain=v1", "-z"]);
+
+	const stagedFiles: string[] = [];
+	const untrackedItems: string[] = [];
+	let unstagedChangesExist = false;
+
+	let start = 0;
+	while (start < buf.length) {
+		const end = buf.indexOf(0, start);
+		if (end === -1) break;
+
+		// Status code is at start, start+1. Space at start+2. Path starts at start+3.
+		// XY PATH\0
+		const x = buf[start]; // ASCII byte
+		const y = buf[start + 1]; // ASCII byte
+		const pathStart = start + 3;
+
+		// 63 is '?'
+		// 1. Untracked (??)
+		if (x === 63 && y === 63) {
+			untrackedItems.push(buf.toString("utf8", pathStart, end));
+		} else {
+			// 2. Staged (A=65, M=77, R=82, C=67)
+			if (x === 65 || x === 77 || x === 82 || x === 67) {
+				stagedFiles.push(buf.toString("utf8", pathStart, end));
+			}
+
+			// 3. Unstaged changes (Modified, Deleted, Type changed, or Unmerged in work tree)
+			// Any non-space (32) value in Y (except for untracked ??) means worktree differs from index.
+			// We already handled ?? case above.
+			if (y !== 32) {
+				unstagedChangesExist = true;
+			}
+		}
+
+		// Handle Rename (R=82) / Copy (C=67) second path
+		// The next null-terminated string is the old path. We just skip it.
+		if (x === 82 || x === 67) {
+			const nextEnd = buf.indexOf(0, end + 1);
+			if (nextEnd !== -1) {
+				start = nextEnd + 1;
+				continue;
+			}
+		}
+
+		start = end + 1;
+	}
+
+	return { stagedFiles, untrackedItems, unstagedChangesExist };
 }

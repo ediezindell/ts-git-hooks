@@ -13,9 +13,8 @@ import {
 	addFiles,
 	evacuateFiles,
 	getChangedFiles,
+	getGitStatus,
 	getStagedFiles,
-	getUntrackedFiles,
-	hasUnstagedChanges,
 	restoreFiles,
 	stashPop,
 	stashPushKeepIndex,
@@ -51,8 +50,13 @@ function parseSimpleCommand(
 	command: string,
 	extraArgs: string[] = [],
 ): Executable {
-	// Optimization: Split simple commands to avoid shell spawn.
-	// This works for "test", "lint --fix", etc.
+	// Optimization: For commands without arguments, we can split faster.
+	if (!command.includes(" ")) {
+		return extraArgs.length > 0
+			? { script: command, args: extraArgs }
+			: { script: command, args: [] };
+	}
+
 	const parts = command.split(/\s+/).filter((part) => part !== "");
 	const script = parts[0];
 	const args =
@@ -206,42 +210,60 @@ export async function resolveScriptsToRun(
 			});
 
 			if (matchedFiles.length > 0) {
-				// 2. Group patterns by command to minimize micromatch calls.
-				// Use Map with string keys for O(1) lookup.
-				const keyToPatterns = new Map<string, string[]>();
-				const keyToCommand = new Map<string, Command<string>>();
+				// Optimization: If there's only one pattern, matchedFiles is already our result.
+				if (patterns.length === 1) {
+					const command = getCommands(hookConfig[patterns[0]]);
+					processListOfCommands(command, matchedFiles);
+				} else {
+					// 2. Group patterns by command to minimize micromatch calls.
+					// Use Map with string keys for O(1) lookup.
+					const keyToPatterns = new Map<string, string[]>();
+					const keyToCommand = new Map<string, Command<string>>();
 
-				for (const [pattern, script] of Object.entries(hookConfig)) {
-					const commands = getCommands(script);
-					for (const command of commands) {
-						const key = getCommandKey(command);
-						if (!keyToCommand.has(key)) {
-							keyToCommand.set(key, command);
-						}
-
-						let patternList = keyToPatterns.get(key);
-						if (!patternList) {
-							patternList = [];
-							keyToPatterns.set(key, patternList);
-						}
-						patternList.push(pattern);
+					// Pre-calculate all commands and their keys
+					const patternToCommands = new Map<
+						string,
+						{ key: string; command: Command<string> }[]
+					>();
+					for (const pattern of patterns) {
+						const commands = getCommands(hookConfig[pattern]);
+						const cmdList = commands.map((command) => ({
+							key: getCommandKey(command),
+							command,
+						}));
+						patternToCommands.set(pattern, cmdList);
 					}
-				}
 
-				// 3. Run micromatch for each unique command group
-				for (const [key, patternsForCommand] of keyToPatterns) {
-					const command = keyToCommand.get(key);
-					if (!command) continue;
+					for (const [pattern, cmdList] of patternToCommands) {
+						for (const { key, command } of cmdList) {
+							if (!keyToCommand.has(key)) {
+								keyToCommand.set(key, command);
+							}
 
-					// Optimization: Use matchedFiles instead of stagedFiles.
-					// Since matchedFiles is the subset of stagedFiles that matched ANY pattern,
-					// any file matching patternsForCommand MUST be in matchedFiles.
-					const matchingFiles = mm(matchedFiles, patternsForCommand, {
-						matchBase: true,
-					});
+							let patternList = keyToPatterns.get(key);
+							if (!patternList) {
+								patternList = [];
+								keyToPatterns.set(key, patternList);
+							}
+							patternList.push(pattern);
+						}
+					}
 
-					if (matchingFiles.length > 0) {
-						processListOfCommands([command], matchingFiles);
+					// 3. Run micromatch for each unique command group
+					for (const [key, patternsForCommand] of keyToPatterns) {
+						const command = keyToCommand.get(key);
+						if (!command) continue;
+
+						// Optimization: Use matchedFiles instead of stagedFiles.
+						// Since matchedFiles is the subset of stagedFiles that matched ANY pattern,
+						// any file matching patternsForCommand MUST be in matchedFiles.
+						const matchingFiles = mm(matchedFiles, patternsForCommand, {
+							matchBase: true,
+						});
+
+						if (matchingFiles.length > 0) {
+							processListOfCommands([command], matchingFiles);
+						}
 					}
 				}
 			}
@@ -399,7 +421,15 @@ async function safeRestore(options: {
  * @returns A promise that resolves to `true` if the hook succeeds, `false` otherwise.
  */
 export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
-	const config = await loadConfig();
+	// Optimization: Start checking git status immediately if we know we'll likely need it (e.g. pre-commit)
+	// This runs in parallel with config loading.
+	const needsStash = !hooksSkippingStash.has(hookName);
+
+	const [config, initialGitStatus] = await Promise.all([
+		loadConfig(),
+		needsStash ? getGitStatus() : Promise.resolve(null),
+	]);
+
 	if (!config) {
 		logger.error("Configuration file not found.");
 		return false;
@@ -410,17 +440,28 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		return true; // No configuration for this hook, so it's a success
 	}
 
-	// Optimization: Start all necessary git checks in parallel to minimize latency.
+	// Determine if we need staged files based on the now-loaded config
 	const needsStagedFiles = shouldFetchStagedFiles(hookConfig);
-	const needsStash = !hooksSkippingStash.has(hookName);
 
-	const [stagedFiles, untrackedItems, unstagedChangesExist] = await Promise.all(
-		[
-			needsStagedFiles ? getStagedFiles() : Promise.resolve([]),
-			needsStash ? getUntrackedFiles() : Promise.resolve([]),
-			needsStash ? hasUnstagedChanges() : Promise.resolve(false),
-		],
-	);
+	const [stagedFiles, untrackedItems, unstagedChangesExist] =
+		await (async () => {
+			// If we already fetched status (because needsStash was true), return it
+			if (initialGitStatus) {
+				return [
+					initialGitStatus.stagedFiles,
+					initialGitStatus.untrackedItems,
+					initialGitStatus.unstagedChangesExist,
+				] as [string[], string[], boolean];
+			}
+
+			// If we didn't fetch status yet (needsStash was false), but we need staged files (e.g. glob hook in commit-msg?)
+			if (needsStagedFiles) {
+				const staged = await getStagedFiles();
+				return [staged, [], false] as [string[], string[], boolean];
+			}
+
+			return [[], [], false] as [string[], string[], boolean];
+		})();
 
 	const { scripts: finalScripts, matchedFiles } = await resolveScriptsToRun(
 		hookConfig,
@@ -445,14 +486,17 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		await safeRestore({ stashCreated, evacuatedDir, silent });
 	};
 
+	const onSigInt = () => onSignal(130);
+	const onSigTerm = () => onSignal(143);
+
 	// Register signal handlers for robust restoration (Failure-safe requirement)
-	const onSignal = async (code: number) => {
+	async function onSignal(code: number) {
 		await performRestoration(true);
 		process.exit(code);
-	};
+	}
 
-	process.on("SIGINT", () => onSignal(130));
-	process.on("SIGTERM", () => onSignal(143));
+	process.on("SIGINT", onSigInt);
+	process.on("SIGTERM", onSigTerm);
 
 	try {
 		// Hybrid Stashing Implementation:
@@ -518,8 +562,8 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		return false;
 	} finally {
 		// Remove signal handlers to avoid memory leaks and double restoration
-		process.removeAllListeners("SIGINT");
-		process.removeAllListeners("SIGTERM");
+		process.off("SIGINT", onSigInt);
+		process.off("SIGTERM", onSigTerm);
 
 		// 6. Restoration (MUST be failure-safe)
 		await performRestoration(false);

@@ -51,7 +51,7 @@
 **Action:** Parallelized git status checks in `src/core/runner.ts` and memoized the `jiti` instance in `src/core/config.ts`.
 
 ## 2026-02-14 - Parallelize stashing and restoration
-**Learning:** Stashing tracked changes (`git stash push`) and evacuating untracked files (physical backup) are independent operations that work on disjoint sets of files. Running them sequentially in `runHook` adds unnecessary latency to the hook critical path. Similarly, restoring them in `safeRestore` can be parallelized, which also allows both restoration attempts to proceed even if one fails (e.g., due to stash conflicts).
+**Learning:** Stashing tracked changes (`git stash push`) and evacuating untracked files (physical backup) are independent operations that work on disjoint sets of files. Running them sequentially in `runHook` add unnecessary latency to the hook critical path. Similarly, restoring them in `safeRestore` can be parallelized, which also allows both restoration attempts to proceed even if one fails (e.g., due to stash conflicts).
 **Action:** Parallelized stashing and restoration operations in `src/core/runner.ts` using `Promise.all` and improved error collection in `safeRestore`.
 
 ## 2026-02-07 - Further parallelization of initial git checks
@@ -61,3 +61,132 @@
 ## 2026-02-08 - Parallel file operations for backup/restore
 **Learning:** `evacuateFiles` and `restoreFiles` were performing file I/O operations (rename, mkdir) sequentially. For operations involving many files, this is I/O bound. Parallelizing these operations using `Promise.all` significantly reduces the time taken to stash and restore untracked files, which is critical for hook performance during complex git states.
 **Action:** Refactored `evacuateFiles` to batch directory creation and parallelize file renames. Refactored `restoreFiles` to process directory entries in parallel while safely managing `mkdir` concurrency with a shared promise cache.
+
+## 2026-02-08 - Optimize combined git status checks
+
+**Learning:** For hooks that require stashing (like `pre-commit`), calling `getStagedFiles`, `getUntrackedFiles`, and `hasUnstagedChanges` separately resulted in 3 process spawns. Even when parallelized, the overhead of multiple `spawn` calls is significant (~50-100ms). Using `git status --porcelain=v1 -z` allows retrieving all this information in a single process spawn, significantly reducing latency.
+
+**Action:** Implemented `getGitStatus` in `src/utils/git.ts` and updated `runHook` to use it when stashing is needed.
+
+
+
+## 2026-02-08 - Secondary performance and robustness improvements
+
+
+
+**Learning:** Minor optimizations across the codebase contribute to overall snappiness. Memoizing `loadConfig` in memory benefits repeated calls in test environments. Improving signal handler removal ensures cleaner resource management. Avoiding redundant string conversions in the `execGit` error path slightly reduces memory pressure during failures.
+
+
+
+**Action:** Implemented in-memory memoization for `loadConfig`, switched to `process.off` for precise signal handler removal, and optimized the `execGit` error path.
+
+
+
+
+
+
+
+## 2026-02-08 - Micro-optimizations for runner and installer
+
+
+
+
+
+
+
+**Learning:** Reducing redundant work in hot paths further improves performance. Skipping the second `micromatch` pass when only one pattern exists saves processing time. Parallelizing hook installation speeds up the `install` command. Simple string checks (`includes`) are faster than regex when used for presence checks.
+
+
+
+
+
+
+
+**Action:** Optimized `resolveScriptsToRun` to skip redundant matching, parallelized `install` hook writing, and replaced regex with `includes` in `kebabToCamel` and `parseSimpleCommand`.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 2026-02-08 - Buffer-based git processing and pre-computed keys
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+**Learning:** Decoding large git outputs into UTF-8 strings before parsing is expensive in terms of both CPU and memory. Processing raw `Buffer` data directly using `Buffer.indexOf(0)` and only decoding individual filenames is significantly more efficient for repositories with many files. Additionally, pre-computing command keys in the pattern loop avoids redundant computations during grouping.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+**Action:** Implemented `execGitBuffer` and `parseNullSeparatedBuffer` to process raw binary data. Refactored `resolveScriptsToRun` to pre-calculate command keys. Optimized `getGitStatus` to parse `Buffer` directly, avoiding all intermediate string allocations.
+
+## 2026-02-08 - Parallel initialization and fully lazy loading
+**Learning:** The initial phase of `runHook` involves two main IO operations: loading the configuration (which requires TypeScript compilation/loading via `jiti`) and checking git status (spawning a process). Previously, these were sequential. By parallelizing them (speculative execution of git status for hooks that typically need it, like `pre-commit`), we hide the latency of one behind the other.
+**Action:** Parallelized `loadConfig` and `getGitStatus` in `runHook`.
+
+**Learning:** `jiti` was being imported at the top level of `src/core/config.ts`, causing it to be loaded even when the configuration file doesn't exist or isn't needed (e.g. `init` command).
+**Action:** Moved `jiti` import inside `loadConfig` and guarded it with a file existence check using `fs.stat` (via `fileExists`), ensuring zero overhead when unconfigured.
+
+## 2026-02-08 - REJECTED: Direct script execution bypass
+**Context:** Bypassing `npm run` (or `pnpm`/`yarn`) to directly execute binaries in `node_modules/.bin` would save ~200-500ms per script execution by avoiding the package manager's startup overhead.
+**Decision:** Rejected. While faster, this breaks the fundamental contract of `npm scripts`. It bypasses lifecycle hooks, environment variable setup (`npm_config_*`, `PATH` modifications), and package manager-specific behaviors (like `pnpm`'s strict hoisting or `yarn`'s PnP). Maintaining full compatibility with the Node.js ecosystem is prioritized over raw speed in this case.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
