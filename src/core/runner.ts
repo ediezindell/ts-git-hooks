@@ -431,7 +431,7 @@ async function safeRestore(options: {
  * Determines the Git status (staged, untracked, unstaged) based on the hook configuration and current environment.
  */
 async function determineGitStatus(
-	needsStash: boolean,
+	_needsStash: boolean,
 	needsStagedFiles: boolean,
 	initialGitStatus: {
 		stagedFiles: string[];
