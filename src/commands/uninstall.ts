@@ -4,7 +4,7 @@ import { loadConfig } from "../core/config";
 import type { CamelCaseGitHook, KebabCaseGitHook } from "../types";
 import { fileExists } from "../utils/fs";
 import { logger } from "../utils/logger";
-import { camelToKebab } from "../utils/string";
+import { toKebabCase } from "../utils/casing";
 
 const gitHooksDir = path.join(process.cwd(), ".git", "hooks");
 const hookIdentifier = "# This hook was installed by ts-git-hooks";
@@ -26,7 +26,7 @@ export async function uninstall() {
 	const removedHooks: KebabCaseGitHook[] = [];
 
 	for (const hookName of configuredHooks) {
-		const kebabCaseHookName = camelToKebab(hookName) as KebabCaseGitHook;
+		const kebabCaseHookName = toKebabCase(hookName);
 		const hookPath = path.join(gitHooksDir, kebabCaseHookName);
 
 		if (await fileExists(hookPath)) {

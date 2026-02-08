@@ -6,7 +6,7 @@ import type {
 	KebabCaseGitHook,
 } from "../types";
 import { logger } from "../utils/logger";
-import { camelToKebab } from "../utils/string";
+import { toKebabCase } from "../utils/casing";
 
 function scriptsToString<T extends string>(script: HookConfig<T>): string {
 	const formatCommand = (command: Command<T>): string => {
@@ -51,7 +51,7 @@ export async function list() {
 			continue;
 		}
 
-		const kebabCaseHookName = camelToKebab(hookName) as KebabCaseGitHook;
+		const kebabCaseHookName = toKebabCase(hookName);
 
 		// Check if the hook config is for glob-based scripts (an object) or unconditional.
 		if (isGlobHookConfig(hookConfig)) {

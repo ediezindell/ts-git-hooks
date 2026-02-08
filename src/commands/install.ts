@@ -2,9 +2,9 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../core/config";
 import type { CamelCaseGitHook, KebabCaseGitHook } from "../types";
+import { toKebabCase } from "../utils/casing";
 import { logger } from "../utils/logger";
 import { getPackageManager } from "../utils/packageManager";
-import { camelToKebab } from "../utils/string";
 
 const gitHooksDir = path.join(process.cwd(), ".git", "hooks");
 
@@ -45,7 +45,7 @@ export async function install() {
 			hookNames.map(async (hookName) => {
 				if (!config[hookName]) return;
 
-				const kebabCaseHookName = camelToKebab(hookName) as KebabCaseGitHook;
+				const kebabCaseHookName = toKebabCase(hookName);
 				const hookPath = path.join(gitHooksDir, kebabCaseHookName);
 
 				let fallbackCommand = "";
