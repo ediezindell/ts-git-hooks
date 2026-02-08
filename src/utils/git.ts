@@ -59,20 +59,28 @@ async function execGit(args: string[]): Promise<string> {
 }
 
 /**
+ * Promisified version of `spawn` for running git commands.
+ * Parses the null-separated output into an array of strings.
+ */
+async function execGitList(args: string[]): Promise<string[]> {
+	const buf = await execGitBuffer(args);
+	return parseNullSeparatedBuffer(buf);
+}
+
+/**
  * Retrieves the list of staged files from git.
  * @returns A promise that resolves to an array of staged file paths.
  */
 export async function getStagedFiles(): Promise<string[]> {
 	// Use --diff-filter=ACMR to exclude deleted files (D).
 	// Use -z to avoid quoting filenames and handle special characters correctly.
-	const buf = await execGitBuffer([
+	return execGitList([
 		"diff",
 		"--cached",
 		"--name-only",
 		"--diff-filter=ACMR",
 		"-z",
 	]);
-	return parseNullSeparatedBuffer(buf);
 }
 
 /**
@@ -110,7 +118,7 @@ export async function stashPop(): Promise<void> {
  * @returns A promise that resolves to an array of changed file paths.
  */
 export async function getChangedFiles(files?: string[]): Promise<string[]> {
-	if (files && files.length === 0) {
+	if (files?.length === 0) {
 		return [];
 	}
 
@@ -119,8 +127,7 @@ export async function getChangedFiles(files?: string[]): Promise<string[]> {
 		args.push("--", ...files);
 	}
 
-	const buf = await execGitBuffer(args);
-	return parseNullSeparatedBuffer(buf);
+	return execGitList(args);
 }
 
 /**
@@ -260,14 +267,13 @@ export async function restoreFiles(backupDir: string): Promise<void> {
 export async function getUntrackedFiles(): Promise<string[]> {
 	// -o: other (untracked), --exclude-standard: use standard ignore rules
 	// --directory: show directories as a whole if they are untracked
-	const buf = await execGitBuffer([
+	return execGitList([
 		"ls-files",
 		"--others",
 		"--exclude-standard",
 		"--directory",
 		"-z",
 	]);
-	return parseNullSeparatedBuffer(buf);
 }
 
 /**
