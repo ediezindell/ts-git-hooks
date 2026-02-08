@@ -2,9 +2,9 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../core/config";
 import type { CamelCaseGitHook, KebabCaseGitHook } from "../types";
+import { toKebabCase } from "../utils/casing";
 import { fileExists } from "../utils/fs";
 import { logger } from "../utils/logger";
-import { toKebabCase } from "../utils/casing";
 
 const gitHooksDir = path.join(process.cwd(), ".git", "hooks");
 const hookIdentifier = "# This hook was installed by ts-git-hooks";

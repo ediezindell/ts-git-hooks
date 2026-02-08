@@ -335,12 +335,7 @@ export async function getGitStatus(): Promise<{
 			untrackedItems.push(buf.toString("utf8", pathStart, end));
 		} else {
 			// 2. Staged (A=Added, M=Modified, R=Renamed, C=Copied)
-			if (
-				x === ASCII.A ||
-				x === ASCII.M ||
-				x === ASCII.R ||
-				x === ASCII.C
-			) {
+			if (x === ASCII.A || x === ASCII.M || x === ASCII.R || x === ASCII.C) {
 				stagedFiles.push(buf.toString("utf8", pathStart, end));
 			}
 
