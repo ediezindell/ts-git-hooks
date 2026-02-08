@@ -23,24 +23,29 @@ export async function uninstall() {
 		return;
 	}
 
-	const removedHooks: KebabCaseGitHook[] = [];
+	const results = await Promise.all(
+		configuredHooks.map(async (hookName) => {
+			const kebabCaseHookName = toKebabCase(hookName);
+			const hookPath = path.join(gitHooksDir, kebabCaseHookName);
 
-	for (const hookName of configuredHooks) {
-		const kebabCaseHookName = toKebabCase(hookName);
-		const hookPath = path.join(gitHooksDir, kebabCaseHookName);
+			if (!(await fileExists(hookPath))) {
+				return null;
+			}
 
-		if (await fileExists(hookPath)) {
 			try {
 				const content = await fs.readFile(hookPath, "utf-8");
 				if (content.includes(hookIdentifier)) {
 					await fs.unlink(hookPath);
-					removedHooks.push(kebabCaseHookName);
+					return kebabCaseHookName;
 				}
 			} catch (_error) {
 				// Ignore errors for reading/unlinking, as the file might be gone
 			}
-		}
-	}
+			return null;
+		}),
+	);
+
+	const removedHooks = results.filter((h): h is KebabCaseGitHook => h !== null);
 
 	if (removedHooks.length > 0) {
 		logger.success("ts-git-hooks uninstalled successfully.");
