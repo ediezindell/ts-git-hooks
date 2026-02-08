@@ -179,12 +179,14 @@ export async function resolveScriptsToRun(
 			const key = getCommandKey(command);
 			let batch = batchedCommands.get(key);
 			if (!batch) {
-				batch = { command, files: new Set() };
+				// Optimization: Initialize Set directly with the files array for the first time.
+				batch = { command, files: new Set(files) };
 				batchedCommands.set(key, batch);
-			}
-			// Add all files to the batch's file set
-			for (const file of files) {
-				batch.files.add(file);
+			} else {
+				// Add all files to the batch's existing file set
+				for (const file of files) {
+					batch.files.add(file);
+				}
 			}
 		}
 	};
@@ -220,22 +222,11 @@ export async function resolveScriptsToRun(
 					const keyToPatterns = new Map<string, string[]>();
 					const keyToCommand = new Map<string, Command<string>>();
 
-					// Pre-calculate all commands and their keys
-					const patternToCommands = new Map<
-						string,
-						{ key: string; command: Command<string> }[]
-					>();
+					// Optimization: Group patterns by command in a single pass to avoid intermediate Maps and arrays.
 					for (const pattern of patterns) {
 						const commands = getCommands(hookConfig[pattern]);
-						const cmdList = commands.map((command) => ({
-							key: getCommandKey(command),
-							command,
-						}));
-						patternToCommands.set(pattern, cmdList);
-					}
-
-					for (const [pattern, cmdList] of patternToCommands) {
-						for (const { key, command } of cmdList) {
+						for (const command of commands) {
+							const key = getCommandKey(command);
 							if (!keyToCommand.has(key)) {
 								keyToCommand.set(key, command);
 							}
@@ -250,16 +241,28 @@ export async function resolveScriptsToRun(
 					}
 
 					// 3. Run micromatch for each unique command group
+					// Optimization: Use a cache for micromatch results to avoid redundant calls
+					// when multiple commands share the same set of patterns (e.g., eslint and prettier).
+					const micromatchCache = new Map<string, string[]>();
+
 					for (const [key, patternsForCommand] of keyToPatterns) {
 						const command = keyToCommand.get(key);
 						if (!command) continue;
 
-						// Optimization: Use matchedFiles instead of stagedFiles.
-						// Since matchedFiles is the subset of stagedFiles that matched ANY pattern,
-						// any file matching patternsForCommand MUST be in matchedFiles.
-						const matchingFiles = mm(matchedFiles, patternsForCommand, {
-							matchBase: true,
-						});
+						// Optimization: Use joined pattern string as cache key.
+						const cacheKey = patternsForCommand.join("\0");
+						let matchingFiles = micromatchCache.get(cacheKey);
+
+						if (matchingFiles === undefined) {
+							// Optimization: If the command group covers ALL patterns, we can reuse matchedFiles.
+							matchingFiles =
+								patternsForCommand.length === patterns.length
+									? matchedFiles
+									: mm(matchedFiles, patternsForCommand, {
+											matchBase: true,
+										});
+							micromatchCache.set(cacheKey, matchingFiles);
+						}
 
 						if (matchingFiles.length > 0) {
 							processListOfCommands([command], matchingFiles);
@@ -269,10 +272,16 @@ export async function resolveScriptsToRun(
 			}
 		}
 	}
-	// Case 2: Unconditional configuration
+	// Case 2: Unconditional configuration (Simple hooks)
 	else {
+		// Optimization: For simple hooks, bypass grouping logic completely.
+		// This avoids Map/Set overhead and redundant array creations for every command.
 		const commandsToProcess = getCommands(hookConfig);
-		processListOfCommands(commandsToProcess, stagedFiles ?? []);
+		const files = stagedFiles ?? [];
+		for (const command of commandsToProcess) {
+			scriptsToRun.push(processCommand(command, files, false));
+		}
+		return { scripts: scriptsToRun, matchedFiles };
 	}
 
 	for (const batch of batchedCommands.values()) {

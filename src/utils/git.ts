@@ -164,17 +164,26 @@ export async function evacuateFiles(
 ): Promise<void> {
 	if (items.length === 0) return;
 
-	// Optimization: Pre-calculate unique parent directories to create them in parallel.
+	// Optimization: Pre-calculate unique parent directories and destination paths.
+	// Cache directory paths to avoid redundant join and dirname calls (~O(N) syscall reduction).
 	const parentDirs = new Set<string>();
 	const moves: { src: string; dest: string }[] = [];
+	const dirCache = new Map<string, string>();
 
 	for (const item of items) {
-		// Strip trailing slash if any (git ls-files --directory adds it)
-		const normalizedItem = item.replace(/\/$/, "");
-		const dest = join(backupDir, normalizedItem);
-		const parentDir = dirname(dest);
+		// Optimization: Use endsWith instead of regex for faster trailing slash removal.
+		const normalizedItem = item.endsWith("/") ? item.slice(0, -1) : item;
+		const itemDir = dirname(normalizedItem);
 
-		parentDirs.add(parentDir);
+		let parentDirInBackup = dirCache.get(itemDir);
+		if (parentDirInBackup === undefined) {
+			parentDirInBackup = join(backupDir, itemDir);
+			dirCache.set(itemDir, parentDirInBackup);
+		}
+
+		const dest = join(backupDir, normalizedItem);
+
+		parentDirs.add(parentDirInBackup);
 		moves.push({ src: normalizedItem, dest });
 	}
 

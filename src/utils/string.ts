@@ -23,6 +23,9 @@ export const camelToKebab = (str: string) =>
  * which is significantly more memory-efficient and faster for large outputs.
  */
 export const parseNullSeparatedBuffer = (buf: Buffer): string[] => {
+	// Optimization: Early exit for empty buffers avoids redundant indexOf calls.
+	if (buf.length === 0) return [];
+
 	const result: string[] = [];
 	let start = 0;
 	let end = buf.indexOf(0); // 0 is null byte in Buffer
