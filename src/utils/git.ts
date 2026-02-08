@@ -290,6 +290,18 @@ export async function hasUnstagedChanges(): Promise<boolean> {
 }
 
 /**
+ * Git status ASCII codes for parsing --porcelain output.
+ */
+const ASCII = {
+	QUESTION: 63, // '?'
+	SPACE: 32, // ' '
+	A: 65,
+	M: 77,
+	R: 82,
+	C: 67,
+} as const;
+
+/**
  * Retrieves comprehensive git status in a single command.
  * Returns staged files, untracked items, and whether unstaged changes exist.
  * This is an optimization to avoid multiple process spawns.
@@ -314,31 +326,33 @@ export async function getGitStatus(): Promise<{
 
 		// Status code is at start, start+1. Space at start+2. Path starts at start+3.
 		// XY PATH\0
-		const x = buf[start]; // ASCII byte
-		const y = buf[start + 1]; // ASCII byte
+		const x = buf[start];
+		const y = buf[start + 1];
 		const pathStart = start + 3;
 
-		// 63 is '?'
 		// 1. Untracked (??)
-		if (x === 63 && y === 63) {
+		if (x === ASCII.QUESTION && y === ASCII.QUESTION) {
 			untrackedItems.push(buf.toString("utf8", pathStart, end));
 		} else {
-			// 2. Staged (A=65, M=77, R=82, C=67)
-			if (x === 65 || x === 77 || x === 82 || x === 67) {
+			// 2. Staged (A=Added, M=Modified, R=Renamed, C=Copied)
+			if (
+				x === ASCII.A ||
+				x === ASCII.M ||
+				x === ASCII.R ||
+				x === ASCII.C
+			) {
 				stagedFiles.push(buf.toString("utf8", pathStart, end));
 			}
 
 			// 3. Unstaged changes (Modified, Deleted, Type changed, or Unmerged in work tree)
-			// Any non-space (32) value in Y (except for untracked ??) means worktree differs from index.
-			// We already handled ?? case above.
-			if (y !== 32) {
+			// Any non-space value in Y (except for untracked ??) means worktree differs from index.
+			if (y !== ASCII.SPACE) {
 				unstagedChangesExist = true;
 			}
 		}
 
-		// Handle Rename (R=82) / Copy (C=67) second path
-		// The next null-terminated string is the old path. We just skip it.
-		if (x === 82 || x === 67) {
+		// Handle Rename (R) / Copy (C) which have a second (old) path: XY PATH\0ORIG_PATH\0
+		if (x === ASCII.R || x === ASCII.C) {
 			const nextEnd = buf.indexOf(0, end + 1);
 			if (nextEnd !== -1) {
 				start = nextEnd + 1;

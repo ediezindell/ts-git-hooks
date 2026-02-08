@@ -1,4 +1,5 @@
 import path from "node:path";
+import * as v from "valibot";
 import type {
 	CamelCaseGitHook,
 	GlobHookConfig,
@@ -8,12 +9,27 @@ import type {
 import { fileExists } from "../utils/fs";
 import { kebabToCamel } from "../utils/string";
 
-// Define a minimal type for jiti to avoid importing the whole package type at top-level
-// or just use 'any' if we want to be purely lazy, but let's try to keep some type safety if possible
-// roughly: (filename: string) => { config: TSGitHookConfig }
-type JitiInstance = (name: string) => { config?: unknown };
-
 const configFileName = "git-hooks.config.ts";
+
+/**
+ * Valibot schema for Git hook configuration validation.
+ */
+const CommandSchema = v.union([
+	v.string(),
+	v.tuple([v.string(), v.function()]),
+]);
+
+const ScriptSchema = v.union([
+	CommandSchema,
+	v.array(CommandSchema),
+]);
+
+const GlobHookConfigSchema = v.record(v.string(), ScriptSchema);
+
+const ConfigSchema = v.record(v.string(), v.union([ScriptSchema, GlobHookConfigSchema]));
+
+// Define a minimal type for jiti to avoid importing the whole package type at top-level
+type JitiInstance = (name: string) => { config?: unknown };
 
 // Memoize jiti instance to avoid repeated initialization overhead
 let _jiti: JitiInstance | undefined;
@@ -63,10 +79,6 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 		// Optimization: Lazy load jiti (~50ms saved)
 		if (!_jiti) {
 			const jitiModule = await import("jiti");
-			// jiti.default is the createJiti function in v2? or jiti itself?
-			// In v1 it was the function. In v2... let's check package.json or assume v1 behavior for now based on previous code.
-			// Previous code: import jiti from "jiti"; _jiti = jiti(__filename);
-			// So default export is the creator.
 			const createJiti = jitiModule.default;
 			_jiti = createJiti(__filename) as unknown as JitiInstance;
 		}
@@ -74,6 +86,15 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 		const configModule = _jiti(configFilePath);
 
 		if (configModule?.config) {
+			// Validate configuration structure at runtime
+			const result = v.safeParse(ConfigSchema, configModule.config);
+			if (!result.success) {
+				console.warn(
+					`Invalid configuration in ${configFileName}:`,
+					v.flatten(result.issues).nested,
+				);
+			}
+
 			const config = configModule.config as TSGitHookConfig;
 
 			// Normalize all hook names to camelCase for internal consistency.
