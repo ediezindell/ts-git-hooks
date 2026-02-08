@@ -152,6 +152,17 @@
 
 **Action:** Implemented `execGitBuffer` and `parseNullSeparatedBuffer` to process raw binary data. Refactored `resolveScriptsToRun` to pre-calculate command keys. Optimized `getGitStatus` to parse `Buffer` directly, avoiding all intermediate string allocations.
 
+## 2026-02-08 - Parallel initialization and fully lazy loading
+**Learning:** The initial phase of `runHook` involves two main IO operations: loading the configuration (which requires TypeScript compilation/loading via `jiti`) and checking git status (spawning a process). Previously, these were sequential. By parallelizing them (speculative execution of git status for hooks that typically need it, like `pre-commit`), we hide the latency of one behind the other.
+**Action:** Parallelized `loadConfig` and `getGitStatus` in `runHook`.
+
+**Learning:** `jiti` was being imported at the top level of `src/core/config.ts`, causing it to be loaded even when the configuration file doesn't exist or isn't needed (e.g. `init` command).
+**Action:** Moved `jiti` import inside `loadConfig` and guarded it with a file existence check using `fs.stat` (via `fileExists`), ensuring zero overhead when unconfigured.
+
+## 2026-02-08 - REJECTED: Direct script execution bypass
+**Context:** Bypassing `npm run` (or `pnpm`/`yarn`) to directly execute binaries in `node_modules/.bin` would save ~200-500ms per script execution by avoiding the package manager's startup overhead.
+**Decision:** Rejected. While faster, this breaks the fundamental contract of `npm scripts`. It bypasses lifecycle hooks, environment variable setup (`npm_config_*`, `PATH` modifications), and package manager-specific behaviors (like `pnpm`'s strict hoisting or `yarn`'s PnP). Maintaining full compatibility with the Node.js ecosystem is prioritized over raw speed in this case.
+
 
 
 

@@ -421,7 +421,15 @@ async function safeRestore(options: {
  * @returns A promise that resolves to `true` if the hook succeeds, `false` otherwise.
  */
 export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
-	const config = await loadConfig();
+	// Optimization: Start checking git status immediately if we know we'll likely need it (e.g. pre-commit)
+	// This runs in parallel with config loading.
+	const needsStash = !hooksSkippingStash.has(hookName);
+
+	const [config, initialGitStatus] = await Promise.all([
+		loadConfig(),
+		needsStash ? getGitStatus() : Promise.resolve(null),
+	]);
+
 	if (!config) {
 		logger.error("Configuration file not found.");
 		return false;
@@ -432,25 +440,26 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		return true; // No configuration for this hook, so it's a success
 	}
 
-	// Optimization: Start all necessary git checks.
-	// We use getGitStatus to combine multiple checks into a single process spawn when possible.
+	// Determine if we need staged files based on the now-loaded config
 	const needsStagedFiles = shouldFetchStagedFiles(hookConfig);
-	const needsStash = !hooksSkippingStash.has(hookName);
 
 	const [stagedFiles, untrackedItems, unstagedChangesExist] =
 		await (async () => {
-			if (needsStash) {
-				const status = await getGitStatus();
+			// If we already fetched status (because needsStash was true), return it
+			if (initialGitStatus) {
 				return [
-					status.stagedFiles,
-					status.untrackedItems,
-					status.unstagedChangesExist,
+					initialGitStatus.stagedFiles,
+					initialGitStatus.untrackedItems,
+					initialGitStatus.unstagedChangesExist,
 				] as const;
 			}
+
+			// If we didn't fetch status yet (needsStash was false), but we need staged files (e.g. glob hook in commit-msg?)
 			if (needsStagedFiles) {
 				const staged = await getStagedFiles();
 				return [staged, [], false] as const;
 			}
+
 			return [[], [], false] as const;
 		})();
 
