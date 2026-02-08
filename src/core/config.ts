@@ -19,14 +19,14 @@ const CommandSchema = v.union([
 	v.tuple([v.string(), v.function()]),
 ]);
 
-const ScriptSchema = v.union([
-	CommandSchema,
-	v.array(CommandSchema),
-]);
+const ScriptSchema = v.union([CommandSchema, v.array(CommandSchema)]);
 
 const GlobHookConfigSchema = v.record(v.string(), ScriptSchema);
 
-const ConfigSchema = v.record(v.string(), v.union([ScriptSchema, GlobHookConfigSchema]));
+const ConfigSchema = v.record(
+	v.string(),
+	v.union([ScriptSchema, GlobHookConfigSchema]),
+);
 
 // Define a minimal type for jiti to avoid importing the whole package type at top-level
 type JitiInstance = (name: string) => { config?: unknown };
@@ -99,10 +99,8 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 
 			// Normalize all hook names to camelCase for internal consistency.
 			const normalizedConfig: TSGitHookConfig = {};
-			const configKeys = Object.keys(config) as (keyof TSGitHookConfig)[];
 
-			for (const hookName of configKeys) {
-				const hookValue = config[hookName as keyof typeof config];
+			for (const [hookName, hookValue] of Object.entries(config)) {
 				if (hookValue) {
 					const camelCaseHookName = kebabToCamel(hookName) as CamelCaseGitHook;
 					// biome-ignore lint/suspicious/noExplicitAny: Dynamic assignment across mapped types requires any
