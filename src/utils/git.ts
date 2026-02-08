@@ -10,15 +10,9 @@ import { parseNullSeparatedBuffer } from "./string";
  */
 function execGitStatus(args: string[]): Promise<number> {
 	return new Promise((resolve) => {
-		const child = spawn("git", args, { stdio: "ignore" });
-
-		child.on("close", (code) => {
-			resolve(code ?? 1);
-		});
-
-		child.on("error", () => {
-			resolve(1);
-		});
+		spawn("git", args, { stdio: "ignore" })
+			.on("close", (code) => resolve(code ?? 1))
+			.on("error", () => resolve(1));
 	});
 }
 
@@ -33,13 +27,8 @@ function execGitBuffer(args: string[]): Promise<Buffer> {
 		const stdoutChunks: Buffer[] = [];
 		const stderrChunks: Buffer[] = [];
 
-		child.stdout.on("data", (data) => {
-			stdoutChunks.push(data);
-		});
-
-		child.stderr.on("data", (data) => {
-			stderrChunks.push(data);
-		});
+		child.stdout.on("data", (data) => stdoutChunks.push(data));
+		child.stderr.on("data", (data) => stderrChunks.push(data));
 
 		child.on("close", (code) => {
 			if (code === 0) {
@@ -47,16 +36,16 @@ function execGitBuffer(args: string[]): Promise<Buffer> {
 			} else {
 				const stdout = Buffer.concat(stdoutChunks).toString("utf8");
 				const stderr = Buffer.concat(stderrChunks).toString("utf8");
+
 				// stderr is often used for progress indicators by git, so we only log it for actual errors.
-				const errorMessage = `Error executing: git ${args.join(" ")}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`;
-				logger.error(errorMessage);
+				const errorDetail = `STDOUT:\n${stdout}\nSTDERR:\n${stderr}`;
+				logger.error(`Error executing: git ${args.join(" ")}\n${errorDetail}`);
+
 				reject(new Error(`Git command failed with exit code ${code}`));
 			}
 		});
 
-		child.on("error", (error) => {
-			reject(error);
-		});
+		child.on("error", reject);
 	});
 }
 
