@@ -80,13 +80,15 @@ function processCommand(
 	const commandString = command as string;
 	const hasQuotes = commandString.includes('"') || commandString.includes("'");
 
+	// For simple commands without quotes, we can parse them into script and args
+	// to avoid shell overhead if it's not a glob hook or if no files matched.
 	if (!hasQuotes) {
-		return parseSimpleCommand(commandString, isGlob ? files : []);
+		const extraArgs = isGlob ? files : [];
+		return parseSimpleCommand(commandString, extraArgs);
 	}
 
-	// For glob-based hooks with quotes, we must construct a single string
-	// because returning an object would treat the whole commandString as the script name
-	// (which fails if it has spaces/quotes).
+	// For commands with quotes, we generally return them as-is to be executed via shell.
+	// However, for glob-based hooks, we must append the matched files.
 	if (isGlob && files.length > 0) {
 		// We must quote the files because they are being interpolated into a shell command string.
 		// JSON.stringify is a safe enough way to quote filenames for shell (adds double quotes).
@@ -295,38 +297,39 @@ export async function resolveScriptsToRun(
 
 /**
  * Executes a single npm script using `spawn`.
- * @param script The name of the npm script to run.
+ * @param executable The executable command to run.
  */
 function executeScript(executable: Executable): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const displayScript =
-			typeof executable === "string"
-				? executable
-				: `${executable.script} ${executable.args.join(" ")}`;
+		const isStringExecutable = typeof executable === "string";
+
+		const displayScript = isStringExecutable
+			? executable
+			: `${executable.script} ${executable.args.join(" ")}`;
+
 		logger.info(`Running script: ${displayScript}`);
 
 		const packageManager = getPackageManager();
-		let child: ChildProcess;
 
-		if (typeof executable === "string") {
+		let spawnArgs: string[];
+		let useShell: boolean;
+
+		if (isStringExecutable) {
 			// The entire script string (command + args) is passed to `npm run` (or pnpm/yarn).
 			// `shell: true` allows the shell to parse the command and its arguments.
-			child = spawn(packageManager, ["run", executable], {
-				stdio: "inherit",
-				shell: true,
-			});
+			spawnArgs = ["run", executable];
+			useShell = true;
 		} else {
 			// Optimization: Avoid shell spawn by passing arguments directly.
 			// This is faster and avoids issues with unquoted arguments.
-			child = spawn(
-				packageManager,
-				["run", executable.script, ...executable.args],
-				{
-					stdio: "inherit",
-					shell: false,
-				},
-			);
+			spawnArgs = ["run", executable.script, ...executable.args];
+			useShell = false;
 		}
+
+		const child = spawn(packageManager, spawnArgs, {
+			stdio: "inherit",
+			shell: useShell,
+		});
 
 		child.on("close", (code) => {
 			if (code === 0) {
