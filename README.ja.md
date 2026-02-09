@@ -112,9 +112,39 @@ export const config: TSGitHookConfig<"lint"> = {
 
 ## 仕組み
 
--   Glob ベースの設定の場合、一致するパターンごとにスクリプトが並列実行されます。
--   直接的なスクリプト設定の場合、配列内のスクリプトが並列実行されます。
+-   Glob ベースの設定の場合、一致するパターンごとにスクリプトがデフォルトで並列実行されます。
+-   直接的なスクリプト設定の場合、配列内のスクリプトがデフォルトで並列実行されます。
 -   いずれかのスクリプトが失敗した場合、フックは失敗し、Git 操作は中止されます。
+
+## 直列実行 (Sequential Execution)
+
+デフォルトでは、`ts-git-hooks` はパフォーマンス向上のために複数のスクリプトを並列に実行します。しかし、同じファイルを修正する複数のツール（例: `eslint --fix` と `prettier --write`）がある場合、並列実行は競合やファイルの破損を引き起こす可能性があります。
+
+スクリプトをグローバル、または特定のフックごとに直列に実行するように強制できます。
+
+### グローバルでの直列実行
+
+```ts
+export const config: TSGitHookConfig = {
+  sequential: true, // すべてのフックがスクリプトを直列に実行します
+  'pre-commit': {
+    '*.ts': ['eslint --fix', 'prettier --write'],
+  },
+};
+```
+
+### フック単位での直列実行
+
+```ts
+export const config: TSGitHookConfig = {
+  'pre-commit': {
+    sequential: true, // pre-commit のスクリプトのみが直列に実行されます
+    config: {
+      '*.ts': ['eslint --fix', 'prettier --write'],
+    },
+  },
+};
+```
 
 ## Tips & トラブルシューティング
 
