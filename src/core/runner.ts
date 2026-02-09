@@ -290,16 +290,23 @@ export async function resolveScriptsToRun(
  */
 function executeScript(executable: Executable): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const displayScript =
-			typeof executable === "string"
-				? executable
-				: `${executable.script} ${executable.args.join(" ")}`;
-		logger.info(`Running script: ${displayScript}`);
+		const isStringExecutable = typeof executable === "string";
+
+		const label = isStringExecutable
+			? executable.split(" ")[0]
+			: executable.script;
+
+		const scopedLogger = logger.scope(label);
+
+		const displayScript = isStringExecutable
+			? executable
+			: `${executable.script} ${executable.args.join(" ")}`;
+		scopedLogger.info(`Running script: ${displayScript}`);
 
 		const packageManager = getPackageManager();
 		let child: ChildProcess;
 
-		if (typeof executable === "string") {
+		if (isStringExecutable) {
 			// The entire script string (command + args) is passed to `npm run` (or pnpm/yarn).
 			// `shell: true` allows the shell to parse the command and its arguments.
 			child = spawn(packageManager, ["run", executable], {
@@ -321,6 +328,7 @@ function executeScript(executable: Executable): Promise<void> {
 
 		child.on("close", (code) => {
 			if (code === 0) {
+				scopedLogger.success("Script passed.");
 				resolve();
 			} else {
 				// Reject the promise if the script fails
@@ -329,6 +337,7 @@ function executeScript(executable: Executable): Promise<void> {
 		});
 
 		child.on("error", (err) => {
+			scopedLogger.error(err);
 			reject(err);
 		});
 	});
