@@ -65,6 +65,24 @@ export type GlobHookConfig<T extends string> = Record<string, Script<T>>;
 export type SimpleHookConfig<T extends string> = Script<T>;
 
 /**
+ * Configuration options for hook execution.
+ */
+export interface HookOptions {
+	/**
+	 * Whether to execute scripts sequentially instead of in parallel.
+	 * @default false
+	 */
+	sequential?: boolean;
+}
+
+/**
+ * A wrapper for hook configuration that includes execution options.
+ */
+export interface HookConfigWithOpts<_T extends string, C> extends HookOptions {
+	config: C;
+}
+
+/**
  * Defines the configuration structure for `ts-git-hooks`.
  * It ensures that hooks are configured correctly based on their type.
  *
@@ -79,11 +97,12 @@ export type SimpleHookConfig<T extends string> = Script<T>;
  *   'pre-push': 'build'
  * };
  */
-export type TSGitHookConfig<T extends string = string> = Partial<{
-	[K in GitHook]: K extends "preCommit" | "pre-commit"
-		? GlobHookConfig<T>
-		: SimpleHookConfig<T>;
-}>;
+export type TSGitHookConfig<T extends string = string> = HookOptions &
+	Partial<{
+		[K in GitHook]: K extends "preCommit" | "pre-commit"
+			? GlobHookConfig<T> | HookConfigWithOpts<T, GlobHookConfig<T>>
+			: SimpleHookConfig<T> | HookConfigWithOpts<T, SimpleHookConfig<T>>;
+	}>;
 
 /**
  * Represents the configuration for a single git hook, which can be either
