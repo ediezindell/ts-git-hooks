@@ -109,19 +109,13 @@ function normalizeConfig(config: TSGitHookConfig): TSGitHookConfig {
 	for (const [key, value] of Object.entries(config)) {
 		if (key === "sequential") continue;
 
-				if (value) {
+		if (value) {
+			const camelCaseHookName = kebabToCamel(key) as CamelCaseGitHook;
 
-					const camelCaseHookName = kebabToCamel(key) as CamelCaseGitHook;
-
-					// biome-ignore lint/suspicious/noExplicitAny: Dynamic assignment across mapped types requires any
-
-					// @ts-ignore: Dynamic assignment across mapped types requires any
-
-					normalized[camelCaseHookName] = value as any;
-
-				}
-
-			}
+			// biome-ignore lint/suspicious/noExplicitAny: Dynamic assignment across mapped types requires any
+			normalized[camelCaseHookName] = value as any;
+		}
+	}
 
 	return normalized;
 }
