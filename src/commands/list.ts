@@ -3,7 +3,13 @@ import {
 	isHookConfigWithOpts,
 	loadConfig,
 } from "../core/config";
-import type { CamelCaseGitHook, Command, HookConfig, Script } from "../types";
+import type {
+	CamelCaseGitHook,
+	Command,
+	GitHook,
+	HookConfig,
+	Script,
+} from "../types";
 import { toKebabCase } from "../utils/casing";
 import { logger } from "../utils/logger";
 
@@ -78,7 +84,7 @@ export async function list() {
 			hookConfig = rawHookConfig as HookConfig;
 		}
 
-		const kebabCaseHookName = toKebabCase(hookName as any);
+		const kebabCaseHookName = toKebabCase(hookName as GitHook);
 
 		// Check if the hook config is for glob-based scripts (an object) or unconditional.
 		if (isGlobHookConfig(hookConfig)) {
