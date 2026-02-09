@@ -111,6 +111,7 @@ function normalizeConfig(config: TSGitHookConfig): TSGitHookConfig {
 
 		if (value) {
 			const camelCaseHookName = kebabToCamel(key) as CamelCaseGitHook;
+
 			// biome-ignore lint/suspicious/noExplicitAny: Dynamic assignment across mapped types requires any
 			normalized[camelCaseHookName] = value as any;
 		}

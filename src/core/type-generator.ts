@@ -17,36 +17,52 @@ function generateTypeDefContent(scriptNames: string[]): string {
 }
 
 /**
+ * Extracts script names from package.json in the current directory.
+ * @returns A promise that resolves to an array of script names.
+ */
+async function getPackageScriptNames(): Promise<string[]> {
+	try {
+		const content = await fs.readFile("package.json", "utf-8");
+		const pkg = JSON.parse(content);
+		return Object.keys(pkg.scripts || {});
+	} catch (error: unknown) {
+		if (
+			error &&
+			typeof error === "object" &&
+			"code" in error &&
+			error.code === "ENOENT"
+		) {
+			throw new Error("package.json not found");
+		}
+		throw error;
+	}
+}
+
+/**
  * Reads package.json, extracts script names, and generates a .d.ts file.
  * @returns A promise that resolves when the file is written.
  */
 export async function generateScriptTypes(): Promise<void> {
 	try {
-		const packageJsonContent = await fs.readFile("package.json", "utf-8");
-		const packageJson = JSON.parse(packageJsonContent);
-		const scripts = packageJson.scripts || {};
-		const scriptNames = Object.keys(scripts);
-
+		const scriptNames = await getPackageScriptNames();
 		const typeDefContent = generateTypeDefContent(scriptNames);
 
 		await fs.writeFile(typeDefFileName, typeDefContent, "utf-8");
+
 		logger.success(
 			`Type definitions for npm scripts have been updated in '${typeDefFileName}'.`,
 		);
 	} catch (error: unknown) {
-		if (
-			typeof error === "object" &&
-			error !== null &&
-			"code" in error &&
-			(error as { code: string }).code === "ENOENT"
-		) {
+		const message =
+			error instanceof Error ? error.message : "An unexpected error occurred";
+
+		if (message === "package.json not found") {
 			logger.error("Error: package.json not found in the current directory.");
-			// Re-throw a simpler error to make testing easier
-			throw new Error("package.json not found");
 		} else {
 			logger.error("An error occurred while generating type definitions:");
 			logger.error(error);
-			throw error;
 		}
+
+		throw error;
 	}
 }

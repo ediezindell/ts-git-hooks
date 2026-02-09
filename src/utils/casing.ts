@@ -1,34 +1,11 @@
-import type { CamelCaseGitHook, GitHook, KebabCaseGitHook } from "../types";
+import type { GitHook, KebabCaseGitHook } from "../types";
+import { camelToKebab } from "./string";
 
-const kebabCaseGitHooks: KebabCaseGitHook[] = [
-	"pre-commit",
-	"prepare-commit-msg",
-	"commit-msg",
-	"post-commit",
-	"pre-rebase",
-	"post-rewrite",
-	"post-checkout",
-	"post-merge",
-	"pre-push",
-	"pre-auto-gc",
-];
-
-const camelToKebabMap = {
-	preCommit: "pre-commit",
-	prepareCommitMsg: "prepare-commit-msg",
-	commitMsg: "commit-msg",
-	postCommit: "post-commit",
-	preRebase: "pre-rebase",
-	postRewrite: "post-rewrite",
-	postCheckout: "post-checkout",
-	postMerge: "post-merge",
-	prePush: "pre-push",
-	preAutoGc: "pre-auto-gc",
-} satisfies Record<CamelCaseGitHook, KebabCaseGitHook>;
-
+/**
+ * Converts a GitHook name (either camelCase or kebab-case) to its kebab-case version.
+ * @param hook The hook name to convert.
+ * @returns The kebab-case version of the hook name.
+ */
 export function toKebabCase(hook: GitHook): KebabCaseGitHook {
-	if (kebabCaseGitHooks.includes(hook as KebabCaseGitHook)) {
-		return hook as KebabCaseGitHook;
-	}
-	return camelToKebabMap[hook as CamelCaseGitHook];
+	return camelToKebab(hook) as KebabCaseGitHook;
 }
