@@ -344,12 +344,13 @@ export async function getGitStatus(): Promise<{
 			untrackedItems.push(buf.toString("utf8", pathStart, end));
 		} else {
 			// 2. Staged files (A=Added, M=Modified, R=Renamed, C=Copied in the index)
+			// Explicitly skip Deleted (D) files in the index.
 			if (STAGED_CODES.has(indexStatus)) {
 				stagedFiles.push(buf.toString("utf8", pathStart, end));
 			}
 
 			// 3. Unstaged changes exist if the working tree status (Y) is not a space.
-			// This includes Modified (M), Deleted (D), Type changed (T), or Unmerged (U).
+			// This includes Modified (M), Deleted (D), etc. in the working tree.
 			if (workTreeStatus !== ASCII.SPACE) {
 				unstagedChangesExist = true;
 			}
@@ -357,6 +358,7 @@ export async function getGitStatus(): Promise<{
 
 		// Handle Rename (R) or Copy (C) which include a second path (the original source):
 		// "XY DEST_PATH\0ORIG_PATH\0"
+		// We MUST skip the original path to avoid it being treated as a new status entry.
 		if (RENAMED_OR_COPIED_CODES.has(indexStatus)) {
 			const nextEnd = buf.indexOf(0, end + 1);
 			if (nextEnd !== -1) {

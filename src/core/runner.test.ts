@@ -29,6 +29,13 @@ vi.mock("./config", async (importOriginal) => {
 vi.mock("../utils/git");
 vi.mock("../utils/packageManager");
 vi.mock("node:child_process");
+vi.mock("node:fs/promises", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs/promises")>();
+	return {
+		...actual,
+		stat: vi.fn().mockResolvedValue({}),
+	};
+});
 
 // A mock ChildProcess to control its events
 class MockChildProcess extends EventEmitter {
@@ -113,8 +120,7 @@ describe("runHook", () => {
 		const preCommitResult = await runHook("pre-commit");
 		// Custom function -> string -> shell: true
 		expect(spawn).toHaveBeenCalledWith(
-			"npm",
-			["run", "eslint my-file.js"],
+			"npm run eslint my-file.js",
 			expect.objectContaining({ shell: true }),
 		);
 		expect(preCommitResult).toBe(true);
@@ -279,8 +285,7 @@ describe("Glob-based (file-dependent) hook execution", () => {
 
 		// Should use shell: true and quoted files
 		expect(spawn).toHaveBeenCalledWith(
-			"npm",
-			["run", 'lint --config "my config" "src/index.ts"'],
+			'npm run lint --config "my config" "src/index.ts"',
 			expect.objectContaining({ shell: true }),
 		);
 		expect(result).toBe(true);

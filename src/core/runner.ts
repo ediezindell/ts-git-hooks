@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Options } from "micromatch";
 import type {
@@ -307,25 +308,29 @@ function executeScript(executable: Executable): Promise<void> {
 
 		const packageManager = getPackageManager();
 
-		let spawnArgs: string[];
+		let command: string;
+		let spawnArgs: string[] | undefined;
 		let useShell: boolean;
 
 		if (isStringExecutable) {
 			// The entire script string (command + args) is passed to `npm run` (or pnpm/yarn).
-			// `shell: true` allows the shell to parse the command and its arguments.
-			spawnArgs = ["run", executable];
+			// To avoid Node.js DeprecationWarning (DEP0190), when using shell: true,
+			// we should either pass the command as a single string.
+			command = `${packageManager} run ${executable}`;
+			spawnArgs = undefined;
 			useShell = true;
 		} else {
 			// Optimization: Avoid shell spawn by passing arguments directly.
 			// This is faster and avoids issues with unquoted arguments.
+			command = packageManager;
 			spawnArgs = ["run", executable.script, ...executable.args];
 			useShell = false;
 		}
 
-		const child = spawn(packageManager, spawnArgs, {
-			stdio: "inherit",
-			shell: useShell,
-		});
+		// When useShell is true, spawnArgs is undefined, so we only pass the command string.
+		const child = spawnArgs
+			? spawn(command, spawnArgs, { stdio: "inherit", shell: useShell })
+			: spawn(command, { stdio: "inherit", shell: useShell });
 
 		child.on("close", (code) => {
 			if (code === 0) {
@@ -569,9 +574,24 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	const { stagedFiles, untrackedItems, unstagedChangesExist } =
 		await determineGitStatus(needsStash, needsStagedFiles, initialGitStatus);
 
+	// Defense-in-depth: Filter stagedFiles to only include existing files.
+	// This prevents tools from failing if a deleted file somehow slipped into the list.
+	const existingStagedFiles = (
+		await Promise.all(
+			stagedFiles.map(async (file) => {
+				try {
+					await stat(file);
+					return file;
+				} catch {
+					return null;
+				}
+			}),
+		)
+	).filter((f): f is string => f !== null);
+
 	const { scripts: finalScripts, matchedFiles } = await resolveScriptsToRun(
 		hookConfig,
-		stagedFiles,
+		existingStagedFiles,
 	);
 
 	if (finalScripts.length === 0) {
