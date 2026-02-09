@@ -1,5 +1,9 @@
-import { isGlobHookConfig, loadConfig } from "../core/config";
-import type { CamelCaseGitHook, Command, Script } from "../types";
+import {
+	isGlobHookConfig,
+	isHookConfigWithOpts,
+	loadConfig,
+} from "../core/config";
+import type { CamelCaseGitHook, Command, HookConfig, Script } from "../types";
 import { toKebabCase } from "../utils/casing";
 import { logger } from "../utils/logger";
 
@@ -46,7 +50,7 @@ export async function list() {
 		return;
 	}
 
-	const configuredHooks = Object.keys(config) as CamelCaseGitHook[];
+	const configuredHooks = Object.keys(config) as (keyof typeof config)[];
 
 	if (configuredHooks.length === 0) {
 		logger.info("No hooks configured.");
@@ -55,23 +59,37 @@ export async function list() {
 
 	logger.info("Configured git hooks:");
 	for (const hookName of configuredHooks) {
-		const hookConfig = config[hookName];
-		if (!hookConfig) {
+		if (hookName === "sequential") continue;
+
+		const rawHookConfig = config[hookName as CamelCaseGitHook];
+		if (!rawHookConfig) {
 			continue;
 		}
 
-		const kebabCaseHookName = toKebabCase(hookName);
+		let hookConfig: HookConfig;
+		let extraInfo = "";
+
+		if (isHookConfigWithOpts(rawHookConfig)) {
+			hookConfig = rawHookConfig.config;
+			if (rawHookConfig.sequential !== undefined) {
+				extraInfo = ` (${rawHookConfig.sequential ? "sequential" : "parallel"})`;
+			}
+		} else {
+			hookConfig = rawHookConfig as HookConfig;
+		}
+
+		const kebabCaseHookName = toKebabCase(hookName as any);
 
 		// Check if the hook config is for glob-based scripts (an object) or unconditional.
 		if (isGlobHookConfig(hookConfig)) {
-			logger.log(`  - ${kebabCaseHookName}:`);
+			logger.log(`  - ${kebabCaseHookName}${extraInfo}:`);
 			for (const [glob, script] of Object.entries(hookConfig)) {
 				logger.log(`    - ${glob}: ${formatScriptConfig(script)}`);
 			}
 		} else {
 			// Unconditional hook
 			const scripts = formatScriptConfig(hookConfig);
-			logger.log(`  - ${kebabCaseHookName}: ${scripts}`);
+			logger.log(`  - ${kebabCaseHookName}${extraInfo}: ${scripts}`);
 		}
 	}
 }

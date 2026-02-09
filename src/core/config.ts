@@ -23,10 +23,21 @@ const ScriptSchema = v.union([CommandSchema, v.array(CommandSchema)]);
 
 const GlobHookConfigSchema = v.record(v.string(), ScriptSchema);
 
-const ConfigSchema = v.record(
-	v.string(),
-	v.union([ScriptSchema, GlobHookConfigSchema]),
-);
+const HookValueSchema = v.union([
+	ScriptSchema,
+	GlobHookConfigSchema,
+	v.object({
+		sequential: v.optional(v.boolean()),
+		config: v.union([ScriptSchema, GlobHookConfigSchema]),
+	}),
+]);
+
+const ConfigSchema = v.intersect([
+	v.object({
+		sequential: v.optional(v.boolean()),
+	}),
+	v.record(v.string(), v.union([v.boolean(), HookValueSchema])),
+]);
 
 // Define a minimal type for jiti to avoid importing the whole package type at top-level
 type JitiInstance = (name: string) => { config?: unknown };
@@ -44,6 +55,20 @@ export const _resetConfig = () => {
 };
 
 /**
+ * Type guard to check if a hook configuration is wrapped with options.
+ */
+export function isHookConfigWithOpts<_T extends string, C>(
+	value: unknown,
+): value is { sequential?: boolean; config: C } {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"config" in value &&
+		!Array.isArray(value)
+	);
+}
+
+/**
  * Type guard to check if a hook configuration is glob-based.
  * @param hookConfig The configuration to check.
  */
@@ -53,7 +78,8 @@ export function isGlobHookConfig<T extends string>(
 	return (
 		typeof hookConfig === "object" &&
 		!Array.isArray(hookConfig) &&
-		hookConfig !== null
+		hookConfig !== null &&
+		!("config" in hookConfig)
 	);
 }
 
@@ -76,11 +102,17 @@ async function getJiti(): Promise<JitiInstance> {
 function normalizeConfig(config: TSGitHookConfig): TSGitHookConfig {
 	const normalized: TSGitHookConfig = {};
 
-	for (const [hookName, hookValue] of Object.entries(config)) {
-		if (hookValue) {
-			const camelCaseHookName = kebabToCamel(hookName) as CamelCaseGitHook;
+	if (config.sequential !== undefined) {
+		normalized.sequential = config.sequential;
+	}
+
+	for (const [key, value] of Object.entries(config)) {
+		if (key === "sequential") continue;
+
+		if (value) {
+			const camelCaseHookName = kebabToCamel(key) as CamelCaseGitHook;
 			// biome-ignore lint/suspicious/noExplicitAny: Dynamic assignment across mapped types requires any
-			normalized[camelCaseHookName] = hookValue as any;
+			normalized[camelCaseHookName] = value as any;
 		}
 	}
 

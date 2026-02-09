@@ -66,4 +66,27 @@ describe("loadConfig validation", () => {
 		});
 		expect(console.warn).not.toHaveBeenCalled();
 	});
+
+	it("should handle configuration with sequential options", async () => {
+		mockJitiInstance.mockReturnValue({
+			config: {
+				sequential: true,
+				"pre-commit": {
+					sequential: false,
+					config: { "*.ts": "lint" },
+				},
+			},
+		});
+
+		const config = await loadConfig();
+
+		expect(config).toEqual({
+			sequential: true,
+			preCommit: {
+				sequential: false,
+				config: { "*.ts": "lint" },
+			},
+		});
+		expect(console.warn).not.toHaveBeenCalled();
+	});
 });

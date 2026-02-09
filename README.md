@@ -113,9 +113,39 @@ All standard git hooks are supported. Both camelCase (`preCommit`) and kebab-cas
 
 ## How It Works
 
--   For glob-based configs, scripts run in parallel for each matching pattern.
--   For direct script configs, scripts in an array run in parallel.
+-   For glob-based configs, scripts run in parallel for each matching pattern by default.
+-   For direct script configs, scripts in an array run in parallel by default.
 -   If any script fails, the hook fails, and the git operation is aborted.
+
+## Sequential Execution
+
+By default, `ts-git-hooks` runs multiple scripts in parallel for better performance. However, if you have multiple tools that modify the same files (e.g., `eslint --fix` and `prettier --write`), running them in parallel might cause race conditions or file conflicts.
+
+You can force scripts to run sequentially either globally or for specific hooks:
+
+### Global Sequential Execution
+
+```ts
+export const config: TSGitHookConfig = {
+  sequential: true, // All hooks will run scripts sequentially
+  'pre-commit': {
+    '*.ts': ['eslint --fix', 'prettier --write'],
+  },
+};
+```
+
+### Per-Hook Sequential Execution
+
+```ts
+export const config: TSGitHookConfig = {
+  'pre-commit': {
+    sequential: true, // Only pre-commit scripts will run sequentially
+    config: {
+      '*.ts': ['eslint --fix', 'prettier --write'],
+    },
+  },
+};
+```
 
 ## Tips & Troubleshooting
 
