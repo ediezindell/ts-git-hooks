@@ -1,4 +1,5 @@
 import path from "node:path";
+import * as v from "valibot";
 import type {
 	CamelCaseGitHook,
 	GlobHookConfig,
@@ -8,12 +9,38 @@ import type {
 import { fileExists } from "../utils/fs";
 import { kebabToCamel } from "../utils/string";
 
-// Define a minimal type for jiti to avoid importing the whole package type at top-level
-// or just use 'any' if we want to be purely lazy, but let's try to keep some type safety if possible
-// roughly: (filename: string) => { config: TSGitHookConfig }
-type JitiInstance = (name: string) => { config?: unknown };
-
 const configFileName = "git-hooks.config.ts";
+
+/**
+ * Valibot schema for Git hook configuration validation.
+ */
+const CommandSchema = v.union([
+	v.string(),
+	v.tuple([v.string(), v.function()]),
+]);
+
+const ScriptSchema = v.union([CommandSchema, v.array(CommandSchema)]);
+
+const GlobHookConfigSchema = v.record(v.string(), ScriptSchema);
+
+const HookValueSchema = v.union([
+	ScriptSchema,
+	GlobHookConfigSchema,
+	v.object({
+		sequential: v.optional(v.boolean()),
+		config: v.union([ScriptSchema, GlobHookConfigSchema]),
+	}),
+]);
+
+const ConfigSchema = v.intersect([
+	v.object({
+		sequential: v.optional(v.boolean()),
+	}),
+	v.record(v.string(), v.union([v.boolean(), HookValueSchema])),
+]);
+
+// Define a minimal type for jiti to avoid importing the whole package type at top-level
+type JitiInstance = (name: string) => { config?: unknown };
 
 // Memoize jiti instance to avoid repeated initialization overhead
 let _jiti: JitiInstance | undefined;
@@ -28,6 +55,20 @@ export const _resetConfig = () => {
 };
 
 /**
+ * Type guard to check if a hook configuration is wrapped with options.
+ */
+export function isHookConfigWithOpts<_T extends string, C>(
+	value: any,
+): value is { sequential?: boolean; config: C } {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"config" in value &&
+		!Array.isArray(value)
+	);
+}
+
+/**
  * Type guard to check if a hook configuration is glob-based.
  * @param hookConfig The configuration to check.
  */
@@ -37,8 +78,45 @@ export function isGlobHookConfig<T extends string>(
 	return (
 		typeof hookConfig === "object" &&
 		!Array.isArray(hookConfig) &&
-		hookConfig !== null
+		hookConfig !== null &&
+		!("config" in hookConfig)
 	);
+}
+
+/**
+ * Initializes and returns the jiti instance for dynamic TypeScript loading.
+ */
+async function getJiti(): Promise<JitiInstance> {
+	if (!_jiti) {
+		const jitiModule = await import("jiti");
+		const createJiti = jitiModule.default;
+		_jiti = createJiti(__filename) as unknown as JitiInstance;
+	}
+	return _jiti;
+}
+
+/**
+ * Normalizes configuration by converting all hook names to camelCase.
+ * @param config The raw configuration object.
+ */
+function normalizeConfig(config: TSGitHookConfig): TSGitHookConfig {
+	const normalized: TSGitHookConfig = {};
+
+	if (config.sequential !== undefined) {
+		normalized.sequential = config.sequential;
+	}
+
+	for (const [key, value] of Object.entries(config)) {
+		if (key === "sequential") continue;
+
+		if (value) {
+			const camelCaseHookName = kebabToCamel(key) as CamelCaseGitHook;
+			// biome-ignore lint/suspicious/noExplicitAny: Dynamic assignment across mapped types requires any
+			normalized[camelCaseHookName] = value as any;
+		}
+	}
+
+	return normalized;
 }
 
 /**
@@ -54,45 +132,29 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 	const configFilePath = path.join(process.cwd(), configFileName);
 
 	// Optimization: Check if file exists before loading jiti (~10-20ms saved)
-	const exists = await fileExists(configFilePath);
-	if (!exists) {
+	if (!(await fileExists(configFilePath))) {
 		return null;
 	}
 
 	try {
-		// Optimization: Lazy load jiti (~50ms saved)
-		if (!_jiti) {
-			const jitiModule = await import("jiti");
-			// jiti.default is the createJiti function in v2? or jiti itself?
-			// In v1 it was the function. In v2... let's check package.json or assume v1 behavior for now based on previous code.
-			// Previous code: import jiti from "jiti"; _jiti = jiti(__filename);
-			// So default export is the creator.
-			const createJiti = jitiModule.default;
-			_jiti = createJiti(__filename) as unknown as JitiInstance;
+		const jiti = await getJiti();
+		const configModule = jiti(configFilePath);
+
+		if (!configModule?.config) {
+			return null;
 		}
 
-		const configModule = _jiti(configFilePath);
-
-		if (configModule?.config) {
-			const config = configModule.config as TSGitHookConfig;
-
-			// Normalize all hook names to camelCase for internal consistency.
-			const normalizedConfig: TSGitHookConfig = {};
-			const configKeys = Object.keys(config) as (keyof TSGitHookConfig)[];
-
-			for (const hookName of configKeys) {
-				const hookValue = config[hookName as keyof typeof config];
-				if (hookValue) {
-					const camelCaseHookName = kebabToCamel(hookName) as CamelCaseGitHook;
-					// biome-ignore lint/suspicious/noExplicitAny: Dynamic assignment across mapped types requires any
-					normalizedConfig[camelCaseHookName] = hookValue as any;
-				}
-			}
-			_memoizedConfig = normalizedConfig;
-			return _memoizedConfig;
+		// Validate configuration structure at runtime
+		const result = v.safeParse(ConfigSchema, configModule.config);
+		if (!result.success) {
+			console.warn(
+				`Invalid configuration in ${configFileName}:`,
+				v.flatten(result.issues).nested,
+			);
 		}
 
-		return null;
+		_memoizedConfig = normalizeConfig(configModule.config as TSGitHookConfig);
+		return _memoizedConfig;
 	} catch (error: unknown) {
 		// For other errors, log them as they might be syntax errors in the config.
 		console.error(`Error loading ${configFileName}:`, error);

@@ -14,6 +14,8 @@ import type { PackageScripts } from './git-hooks.d.ts';
 // For type safety, you can use the 'PackageScripts' type:
 // export const config: TSGitHookConfig<PackageScripts> = {
 export const config: TSGitHookConfig = {
+  // Run all hooks sequentially (default is parallel)
+  // sequential: true,
   'pre-commit': {
     '*.{js,ts,jsx,tsx}': ['lint', 'test'],
     '*.{md,json}': 'format',

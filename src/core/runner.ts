@@ -22,7 +22,7 @@ import {
 import { logger } from "../utils/logger";
 import { getPackageManager } from "../utils/packageManager";
 import { kebabToCamel } from "../utils/string";
-import { isGlobHookConfig, loadConfig } from "./config";
+import { isGlobHookConfig, isHookConfigWithOpts, loadConfig } from "./config";
 
 /**
  * Represents an executable command.
@@ -286,7 +286,7 @@ export async function resolveScriptsToRun(
 
 /**
  * Executes a single npm script using `spawn`.
- * @param script The name of the npm script to run.
+ * @param executable The executable command to run.
  */
 function executeScript(executable: Executable): Promise<void> {
 	return new Promise((resolve, reject) => {
@@ -435,9 +435,25 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		return false;
 	}
 
-	const hookConfig = config[kebabToCamel(hookName) as CamelCaseGitHook];
-	if (!hookConfig || Object.keys(hookConfig).length === 0) {
-		return true; // No configuration for this hook, so it's a success
+	const rawHookConfig = config[kebabToCamel(hookName) as CamelCaseGitHook];
+	if (!rawHookConfig) {
+		return true; // No configuration for this hook
+	}
+
+	let hookConfig: HookConfig;
+	let isSequential = config.sequential ?? false;
+
+	if (isHookConfigWithOpts(rawHookConfig)) {
+		hookConfig = rawHookConfig.config;
+		if (rawHookConfig.sequential !== undefined) {
+			isSequential = rawHookConfig.sequential;
+		}
+	} else {
+		hookConfig = rawHookConfig as HookConfig;
+	}
+
+	if (Object.keys(hookConfig).length === 0) {
+		return true;
 	}
 
 	// Determine if we need staged files based on the now-loaded config
@@ -539,9 +555,17 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 			}
 		}
 
-		// 4. Hook Execution
-		logger.info(`Running scripts for ${hookName}...`);
-		await Promise.all(finalScripts.map((script) => executeScript(script)));
+		logger.info(
+			`Running scripts for ${hookName} (${isSequential ? "sequentially" : "in parallel"})...`,
+		);
+
+		if (isSequential) {
+			for (const script of finalScripts) {
+				await executeScript(script);
+			}
+		} else {
+			await Promise.all(finalScripts.map((script) => executeScript(script)));
+		}
 
 		// 5. For pre-commit, stage any changes made by the scripts
 		if (hookName === "pre-commit") {

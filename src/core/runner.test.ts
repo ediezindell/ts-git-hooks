@@ -612,3 +612,97 @@ describe("Performance Optimizations", () => {
 		);
 	});
 });
+
+describe("Sequential Execution logic", () => {
+	beforeEach(() => {
+		setupDefaultMocks();
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("should run scripts sequentially when sequential is true", async () => {
+		const mockConfig: TSGitHookConfig = {
+			prePush: {
+				sequential: true,
+				config: ["task1", "task2"],
+			},
+		};
+		vi.mocked(loadConfig).mockResolvedValue(mockConfig);
+
+		let activeCount = 0;
+		let maxActiveCount = 0;
+
+		vi.mocked(spawn).mockImplementation(() => {
+			activeCount++;
+			maxActiveCount = Math.max(maxActiveCount, activeCount);
+			const p = new MockChildProcess();
+			setTimeout(() => {
+				activeCount--;
+				p.emit("close", 0);
+			}, 10);
+			return p as any;
+		});
+
+		const result = await runHook("pre-push");
+
+		expect(result).toBe(true);
+		expect(spawn).toHaveBeenCalledTimes(2);
+		expect(maxActiveCount).toBe(1); // Should only have 1 active at a time
+	});
+
+	it("should run scripts in parallel by default", async () => {
+		const mockConfig: TSGitHookConfig = {
+			prePush: ["task1", "task2"],
+		};
+		vi.mocked(loadConfig).mockResolvedValue(mockConfig);
+
+		let activeCount = 0;
+		let maxActiveCount = 0;
+
+		vi.mocked(spawn).mockImplementation(() => {
+			activeCount++;
+			maxActiveCount = Math.max(maxActiveCount, activeCount);
+			const p = new MockChildProcess();
+			setTimeout(() => {
+				activeCount--;
+				p.emit("close", 0);
+			}, 10);
+			return p as any;
+		});
+
+		const result = await runHook("pre-push");
+
+		expect(result).toBe(true);
+		expect(spawn).toHaveBeenCalledTimes(2);
+		expect(maxActiveCount).toBe(2); // Should have both active
+	});
+
+	it("should respect global sequential setting", async () => {
+		const mockConfig: TSGitHookConfig = {
+			sequential: true,
+			prePush: ["task1", "task2"],
+		};
+		vi.mocked(loadConfig).mockResolvedValue(mockConfig);
+
+		let activeCount = 0;
+		let maxActiveCount = 0;
+
+		vi.mocked(spawn).mockImplementation(() => {
+			activeCount++;
+			maxActiveCount = Math.max(maxActiveCount, activeCount);
+			const p = new MockChildProcess();
+			setTimeout(() => {
+				activeCount--;
+				p.emit("close", 0);
+			}, 10);
+			return p as any;
+		});
+
+		const result = await runHook("pre-push");
+
+		expect(result).toBe(true);
+		expect(maxActiveCount).toBe(1);
+	});
+});
