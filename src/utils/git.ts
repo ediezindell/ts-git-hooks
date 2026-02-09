@@ -5,20 +5,36 @@ import { logger } from "./logger";
 import { parseNullSeparatedBuffer } from "./string";
 
 /**
+ * Git status ASCII codes for parsing --porcelain output.
+ */
+const ASCII = {
+	QUESTION: 63, // '?'
+	SPACE: 32, // ' '
+	A: 65, // 'A'
+	M: 77, // 'M'
+	R: 82, // 'R'
+	C: 67, // 'C'
+} as const;
+
+/**
+ * Status codes that indicate a file is staged in the index.
+ */
+const STAGED_CODES = new Set<number>([ASCII.A, ASCII.M, ASCII.R, ASCII.C]);
+
+/**
+ * Status codes that indicate a rename or copy operation, followed by a second path.
+ */
+const RENAMED_OR_COPIED_CODES = new Set<number>([ASCII.R, ASCII.C]);
+
+/**
  * Promisified version of `spawn` for running git commands and getting the exit code.
  * Uses `stdio: "ignore"` for maximum performance when output is not needed.
  */
 function execGitStatus(args: string[]): Promise<number> {
 	return new Promise((resolve) => {
-		const child = spawn("git", args, { stdio: "ignore" });
-
-		child.on("close", (code) => {
-			resolve(code ?? 1);
-		});
-
-		child.on("error", () => {
-			resolve(1);
-		});
+		spawn("git", args, { stdio: "ignore" })
+			.on("close", (code) => resolve(code ?? 1))
+			.on("error", () => resolve(1));
 	});
 }
 
@@ -33,13 +49,8 @@ function execGitBuffer(args: string[]): Promise<Buffer> {
 		const stdoutChunks: Buffer[] = [];
 		const stderrChunks: Buffer[] = [];
 
-		child.stdout.on("data", (data) => {
-			stdoutChunks.push(data);
-		});
-
-		child.stderr.on("data", (data) => {
-			stderrChunks.push(data);
-		});
+		child.stdout.on("data", (data) => stdoutChunks.push(data));
+		child.stderr.on("data", (data) => stderrChunks.push(data));
 
 		child.on("close", (code) => {
 			if (code === 0) {
@@ -47,16 +58,16 @@ function execGitBuffer(args: string[]): Promise<Buffer> {
 			} else {
 				const stdout = Buffer.concat(stdoutChunks).toString("utf8");
 				const stderr = Buffer.concat(stderrChunks).toString("utf8");
+
 				// stderr is often used for progress indicators by git, so we only log it for actual errors.
-				const errorMessage = `Error executing: git ${args.join(" ")}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`;
-				logger.error(errorMessage);
+				const errorDetail = `STDOUT:\n${stdout}\nSTDERR:\n${stderr}`;
+				logger.error(`Error executing: git ${args.join(" ")}\n${errorDetail}`);
+
 				reject(new Error(`Git command failed with exit code ${code}`));
 			}
 		});
 
-		child.on("error", (error) => {
-			reject(error);
-		});
+		child.on("error", reject);
 	});
 }
 
@@ -70,20 +81,28 @@ async function execGit(args: string[]): Promise<string> {
 }
 
 /**
+ * Promisified version of `spawn` for running git commands.
+ * Parses the null-separated output into an array of strings.
+ */
+async function execGitList(args: string[]): Promise<string[]> {
+	const buf = await execGitBuffer(args);
+	return parseNullSeparatedBuffer(buf);
+}
+
+/**
  * Retrieves the list of staged files from git.
  * @returns A promise that resolves to an array of staged file paths.
  */
 export async function getStagedFiles(): Promise<string[]> {
 	// Use --diff-filter=ACMR to exclude deleted files (D).
 	// Use -z to avoid quoting filenames and handle special characters correctly.
-	const buf = await execGitBuffer([
+	return execGitList([
 		"diff",
 		"--cached",
 		"--name-only",
 		"--diff-filter=ACMR",
 		"-z",
 	]);
-	return parseNullSeparatedBuffer(buf);
 }
 
 /**
@@ -121,7 +140,7 @@ export async function stashPop(): Promise<void> {
  * @returns A promise that resolves to an array of changed file paths.
  */
 export async function getChangedFiles(files?: string[]): Promise<string[]> {
-	if (files && files.length === 0) {
+	if (files?.length === 0) {
 		return [];
 	}
 
@@ -130,8 +149,7 @@ export async function getChangedFiles(files?: string[]): Promise<string[]> {
 		args.push("--", ...files);
 	}
 
-	const buf = await execGitBuffer(args);
-	return parseNullSeparatedBuffer(buf);
+	return execGitList(args);
 }
 
 /**
@@ -164,18 +182,25 @@ export async function evacuateFiles(
 ): Promise<void> {
 	if (items.length === 0) return;
 
-	// Optimization: Pre-calculate unique parent directories to create them in parallel.
+	// Optimization: Pre-calculate unique parent directories and destination paths.
+	// Cache directory paths to avoid redundant join and dirname calls (~O(N) syscall reduction).
 	const parentDirs = new Set<string>();
 	const moves: { src: string; dest: string }[] = [];
+	const dirCache = new Map<string, string>();
 
 	for (const item of items) {
-		// Strip trailing slash if any (git ls-files --directory adds it)
-		const normalizedItem = item.replace(/\/$/, "");
-		const dest = join(backupDir, normalizedItem);
-		const parentDir = dirname(dest);
+		// Optimization: Use endsWith instead of regex for faster trailing slash removal.
+		const src = item.endsWith("/") ? item.slice(0, -1) : item;
+		const itemDir = dirname(src);
 
-		parentDirs.add(parentDir);
-		moves.push({ src: normalizedItem, dest });
+		let parentDirInBackup = dirCache.get(itemDir);
+		if (parentDirInBackup === undefined) {
+			parentDirInBackup = join(backupDir, itemDir);
+			dirCache.set(itemDir, parentDirInBackup);
+			parentDirs.add(parentDirInBackup);
+		}
+
+		moves.push({ src, dest: join(backupDir, src) });
 	}
 
 	// 1. Create all parent directories in parallel
@@ -194,13 +219,20 @@ export async function evacuateFiles(
  */
 export async function restoreFiles(backupDir: string): Promise<void> {
 	// Optimization: Cache mkdir promises to avoid race conditions and redundant calls during parallel execution.
-	const mkdirCache = new Map<string, Promise<string | undefined>>();
-	const ensureDir = (dir: string) => {
+	const mkdirCache = new Map<string, Promise<void>>();
+
+	const ensureDir = (dir: string): Promise<void> => {
 		if (dir === ".") return Promise.resolve();
-		if (!mkdirCache.has(dir)) {
-			mkdirCache.set(dir, mkdir(dir, { recursive: true }));
-		}
-		return mkdirCache.get(dir) as Promise<string | undefined>;
+
+		const cached = mkdirCache.get(dir);
+		if (cached) return cached;
+
+		const promise = (async () => {
+			await mkdir(dir, { recursive: true });
+		})();
+
+		mkdirCache.set(dir, promise);
+		return promise;
 	};
 
 	const walk = async (currentDir: string) => {
@@ -225,8 +257,7 @@ export async function restoreFiles(backupDir: string): Promise<void> {
 						);
 					} else {
 						// Destination does not exist: move the whole directory
-						const parentDir = dirname(dest);
-						await ensureDir(parentDir);
+						await ensureDir(dirname(dest));
 						await rename(src, dest);
 					}
 				} else {
@@ -237,8 +268,7 @@ export async function restoreFiles(backupDir: string): Promise<void> {
 						);
 					}
 					// Move the file, potentially overwriting if it was a file (not recommended, but better than dropping)
-					const parentDir = dirname(dest);
-					await ensureDir(parentDir);
+					await ensureDir(dirname(dest));
 					await rename(src, dest);
 				}
 			}),
@@ -259,14 +289,13 @@ export async function restoreFiles(backupDir: string): Promise<void> {
 export async function getUntrackedFiles(): Promise<string[]> {
 	// -o: other (untracked), --exclude-standard: use standard ignore rules
 	// --directory: show directories as a whole if they are untracked
-	const buf = await execGitBuffer([
+	return execGitList([
 		"ls-files",
 		"--others",
 		"--exclude-standard",
 		"--directory",
 		"-z",
 	]);
-	return parseNullSeparatedBuffer(buf);
 }
 
 /**
@@ -303,33 +332,32 @@ export async function getGitStatus(): Promise<{
 		const end = buf.indexOf(0, start);
 		if (end === -1) break;
 
-		// Status code is at start, start+1. Space at start+2. Path starts at start+3.
-		// XY PATH\0
-		const x = buf[start]; // ASCII byte
-		const y = buf[start + 1]; // ASCII byte
+		// The porcelain v1 output format is "XY PATH\0" (when using -z)
+		// X: Status in the index (staged changes)
+		// Y: Status in the working tree (unstaged changes)
+		const indexStatus = buf[start];
+		const workTreeStatus = buf[start + 1];
 		const pathStart = start + 3;
 
-		// 63 is '?'
-		// 1. Untracked (??)
-		if (x === 63 && y === 63) {
+		// 1. Untracked items are denoted by "??" status
+		if (indexStatus === ASCII.QUESTION && workTreeStatus === ASCII.QUESTION) {
 			untrackedItems.push(buf.toString("utf8", pathStart, end));
 		} else {
-			// 2. Staged (A=65, M=77, R=82, C=67)
-			if (x === 65 || x === 77 || x === 82 || x === 67) {
+			// 2. Staged files (A=Added, M=Modified, R=Renamed, C=Copied in the index)
+			if (STAGED_CODES.has(indexStatus)) {
 				stagedFiles.push(buf.toString("utf8", pathStart, end));
 			}
 
-			// 3. Unstaged changes (Modified, Deleted, Type changed, or Unmerged in work tree)
-			// Any non-space (32) value in Y (except for untracked ??) means worktree differs from index.
-			// We already handled ?? case above.
-			if (y !== 32) {
+			// 3. Unstaged changes exist if the working tree status (Y) is not a space.
+			// This includes Modified (M), Deleted (D), Type changed (T), or Unmerged (U).
+			if (workTreeStatus !== ASCII.SPACE) {
 				unstagedChangesExist = true;
 			}
 		}
 
-		// Handle Rename (R=82) / Copy (C=67) second path
-		// The next null-terminated string is the old path. We just skip it.
-		if (x === 82 || x === 67) {
+		// Handle Rename (R) or Copy (C) which include a second path (the original source):
+		// "XY DEST_PATH\0ORIG_PATH\0"
+		if (RENAMED_OR_COPIED_CODES.has(indexStatus)) {
 			const nextEnd = buf.indexOf(0, end + 1);
 			if (nextEnd !== -1) {
 				start = nextEnd + 1;

@@ -1,5 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { parseNullSeparatedList } from "./string";
+import { camelToKebab, kebabToCamel, parseNullSeparatedList } from "./string";
+
+describe("kebabToCamel", () => {
+	it("should convert kebab-case to camelCase", () => {
+		expect(kebabToCamel("pre-commit")).toBe("preCommit");
+		expect(kebabToCamel("prepare-commit-msg")).toBe("prepareCommitMsg");
+	});
+
+	it("should return the same string if no hyphen", () => {
+		expect(kebabToCamel("lint")).toBe("lint");
+	});
+});
+
+describe("camelToKebab", () => {
+	it("should convert camelCase to kebab-case", () => {
+		expect(camelToKebab("preCommit")).toBe("pre-commit");
+		expect(camelToKebab("prepareCommitMsg")).toBe("prepare-commit-msg");
+	});
+
+	it("should handle strings that are already kebab-case (though not ideal)", () => {
+		expect(camelToKebab("pre-commit")).toBe("pre-commit");
+	});
+});
 
 describe("parseNullSeparatedList", () => {
 	it("should parse a null-separated string", () => {

@@ -47,11 +47,13 @@ export async function main() {
 				logger.error('Error: "run" command requires a hook name.');
 				logger.log("Example: ts-git-hooks run pre-commit");
 				process.exit(1);
+				return;
 			}
 			const { runHook } = await import("../core/runner.js");
 			const success = await runHook(toKebabCase(hookName as GitHook));
 			if (!success) {
 				process.exit(1);
+				return;
 			}
 			break;
 		}
@@ -76,6 +78,7 @@ Available commands:
 			logger.error(`Error: Unknown command "${command}".`);
 			logger.log('Run "ts-git-hooks --help" for a list of available commands.');
 			process.exit(1);
+			return;
 	}
 }
 

@@ -3,18 +3,19 @@
  * @param str The string to convert.
  * @returns The camelCased string.
  */
-export const kebabToCamel = (str: string) => {
+export function kebabToCamel(str: string): string {
 	if (!str.includes("-")) return str;
-	return str.replace(/-(\w)/g, (_, c) => c.toUpperCase());
-};
+	return str.replace(/-(\w)/g, (_, char) => char.toUpperCase());
+}
 
 /**
  * Converts a camelCase string to kebab-case.
  * @param str The string to convert.
  * @returns The kebab-cased string.
  */
-export const camelToKebab = (str: string) =>
-	str.replace(/([a-z0-9]|(?=[A-Z]))([A-Z])/g, "$1-$2").toLowerCase();
+export function camelToKebab(str: string): string {
+	return str.replace(/([a-z0-9]|(?=[A-Z]))([A-Z])/g, "$1-$2").toLowerCase();
+}
 
 /**
  * Parses a null-separated Buffer into an array of strings.
@@ -22,10 +23,12 @@ export const camelToKebab = (str: string) =>
  * Optimization: Working directly with Buffer avoids decoding the entire output into a string first,
  * which is significantly more memory-efficient and faster for large outputs.
  */
-export const parseNullSeparatedBuffer = (buf: Buffer): string[] => {
+export function parseNullSeparatedBuffer(buf: Buffer): string[] {
+	if (buf.length === 0) return [];
+
 	const result: string[] = [];
 	let start = 0;
-	let end = buf.indexOf(0); // 0 is null byte in Buffer
+	let end = buf.indexOf(0);
 
 	while (end !== -1) {
 		if (end > start) {
@@ -35,15 +38,16 @@ export const parseNullSeparatedBuffer = (buf: Buffer): string[] => {
 		end = buf.indexOf(0, start);
 	}
 
+	// Handle the remaining part after the last null byte, if any
 	if (start < buf.length) {
-		const lastItem = buf.toString("utf8", start);
-		if (lastItem !== "") {
-			result.push(lastItem);
+		const remainder = buf.toString("utf8", start);
+		if (remainder !== "") {
+			result.push(remainder);
 		}
 	}
 
 	return result;
-};
+}
 
 /**
  * Parses a null-separated string into an array of strings.
@@ -51,9 +55,9 @@ export const parseNullSeparatedBuffer = (buf: Buffer): string[] => {
  * @param str The string to parse.
  * @returns An array of non-empty strings.
  */
-export const parseNullSeparatedList = (str: string): string[] => {
-	// Optimization: Using a manual loop with indexOf and substring is significantly faster (~3x)
-	// and more memory-efficient than split("\0").filter() as it avoids creating a large intermediate array.
+export function parseNullSeparatedList(str: string): string[] {
+	if (str.length === 0) return [];
+
 	const result: string[] = [];
 	let start = 0;
 	let end = str.indexOf("\0");
@@ -66,12 +70,13 @@ export const parseNullSeparatedList = (str: string): string[] => {
 		end = str.indexOf("\0", start);
 	}
 
+	// Handle the remaining part after the last null character, if any
 	if (start < str.length) {
-		const lastItem = str.substring(start);
-		if (lastItem !== "") {
-			result.push(lastItem);
+		const remainder = str.substring(start);
+		if (remainder !== "") {
+			result.push(remainder);
 		}
 	}
 
 	return result;
-};
+}

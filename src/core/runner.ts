@@ -1,10 +1,11 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { join } from "node:path";
 import type { Options } from "micromatch";
 import type {
 	ArgsFn,
 	CamelCaseGitHook,
 	Command,
+	GlobHookConfig,
 	HookConfig,
 	KebabCaseGitHook,
 	Script,
@@ -80,13 +81,15 @@ function processCommand(
 	const commandString = command as string;
 	const hasQuotes = commandString.includes('"') || commandString.includes("'");
 
+	// For simple commands without quotes, we can parse them into script and args
+	// to avoid shell overhead if it's not a glob hook or if no files matched.
 	if (!hasQuotes) {
-		return parseSimpleCommand(commandString, isGlob ? files : []);
+		const extraArgs = isGlob ? files : [];
+		return parseSimpleCommand(commandString, extraArgs);
 	}
 
-	// For glob-based hooks with quotes, we must construct a single string
-	// because returning an object would treat the whole commandString as the script name
-	// (which fails if it has spaces/quotes).
+	// For commands with quotes, we generally return them as-is to be executed via shell.
+	// However, for glob-based hooks, we must append the matched files.
 	if (isGlob && files.length > 0) {
 		// We must quote the files because they are being interpolated into a shell command string.
 		// JSON.stringify is a safe enough way to quote filenames for shell (adds double quotes).
@@ -138,6 +141,43 @@ let micromatch:
 	| undefined;
 
 /**
+ * Groups patterns by command to minimize micromatch calls and redundant processing.
+ */
+function groupPatternsByCommand(
+	patterns: string[],
+	hookConfig: HookConfig,
+	getCommandKey: (command: Command<string>) => string,
+): {
+	keyToPatterns: Map<string, string[]>;
+	keyToCommand: Map<string, Command<string>>;
+} {
+	const keyToPatterns = new Map<string, string[]>();
+	const keyToCommand = new Map<string, Command<string>>();
+
+	// At this point, hookConfig is guaranteed to be a GlobHookConfig.
+	const globConfig = hookConfig as GlobHookConfig<string>;
+
+	for (const pattern of patterns) {
+		const commands = getCommands(globConfig[pattern]);
+		for (const command of commands) {
+			const key = getCommandKey(command);
+			if (!keyToCommand.has(key)) {
+				keyToCommand.set(key, command);
+			}
+
+			let patternList = keyToPatterns.get(key);
+			if (!patternList) {
+				patternList = [];
+				keyToPatterns.set(key, patternList);
+			}
+			patternList.push(pattern);
+		}
+	}
+
+	return { keyToPatterns, keyToCommand };
+}
+
+/**
  * Resolves the scripts to run for a given hook configuration.
  * @param hookConfig The configuration for the specific git hook.
  * @param stagedFiles The list of currently staged files.
@@ -148,21 +188,17 @@ export async function resolveScriptsToRun(
 	stagedFiles: string[] | null,
 ): Promise<{ scripts: Executable[]; matchedFiles: string[] | null }> {
 	const scriptsToRun: Executable[] = [];
-	// Optimization: Use a Map for O(1) lookups during command grouping.
 	const batchedCommands = new Map<
 		string,
 		{ command: Command<string>; files: Set<string> }
 	>();
 
 	// WeakMap to assign unique IDs to functions for O(1) command comparison keys.
-	// We keep this local to the function as it's only needed for a single resolution pass.
 	const functionIds = new WeakMap<ArgsFn, number>();
 	let nextFunctionId = 0;
 
 	const getCommandKey = (command: Command<string>): string => {
-		if (typeof command === "string") {
-			return `s:${command}`;
-		}
+		if (typeof command === "string") return `s:${command}`;
 		let id = functionIds.get(command[1]);
 		if (id === undefined) {
 			id = nextFunctionId++;
@@ -171,20 +207,15 @@ export async function resolveScriptsToRun(
 		return `t:${command[0]}:${id}`;
 	};
 
-	const processListOfCommands = (
-		commands: Command<string>[],
-		files: string[],
-	) => {
+	const addCommandBatch = (commands: Command<string>[], files: string[]) => {
 		for (const command of commands) {
 			const key = getCommandKey(command);
 			let batch = batchedCommands.get(key);
 			if (!batch) {
-				batch = { command, files: new Set() };
+				batch = { command, files: new Set(files) };
 				batchedCommands.set(key, batch);
-			}
-			// Add all files to the batch's file set
-			for (const file of files) {
-				batch.files.add(file);
+			} else {
+				for (const file of files) batch.files.add(file);
 			}
 		}
 	};
@@ -195,84 +226,54 @@ export async function resolveScriptsToRun(
 	if (isGlob) {
 		if (stagedFiles && stagedFiles.length > 0) {
 			// Optimization: Lazy load and cache micromatch only when needed
-			if (!micromatch) {
-				micromatch = (await import("micromatch")).default;
-			}
-			if (!micromatch) {
-				throw new Error("Failed to load micromatch");
-			}
+			if (!micromatch) micromatch = (await import("micromatch")).default;
+			if (!micromatch) throw new Error("Failed to load micromatch");
 			const mm = micromatch;
 
 			const patterns = Object.keys(hookConfig);
-			// 1. Get all matched files for the pre-commit optimization in a single pass
-			matchedFiles = mm(stagedFiles, patterns, {
-				matchBase: true,
-			});
+			matchedFiles = mm(stagedFiles, patterns, { matchBase: true });
 
 			if (matchedFiles.length > 0) {
-				// Optimization: If there's only one pattern, matchedFiles is already our result.
 				if (patterns.length === 1) {
-					const command = getCommands(hookConfig[patterns[0]]);
-					processListOfCommands(command, matchedFiles);
+					addCommandBatch(getCommands(hookConfig[patterns[0]]), matchedFiles);
 				} else {
-					// 2. Group patterns by command to minimize micromatch calls.
-					// Use Map with string keys for O(1) lookup.
-					const keyToPatterns = new Map<string, string[]>();
-					const keyToCommand = new Map<string, Command<string>>();
+					const { keyToPatterns, keyToCommand } = groupPatternsByCommand(
+						patterns,
+						hookConfig,
+						getCommandKey,
+					);
 
-					// Pre-calculate all commands and their keys
-					const patternToCommands = new Map<
-						string,
-						{ key: string; command: Command<string> }[]
-					>();
-					for (const pattern of patterns) {
-						const commands = getCommands(hookConfig[pattern]);
-						const cmdList = commands.map((command) => ({
-							key: getCommandKey(command),
-							command,
-						}));
-						patternToCommands.set(pattern, cmdList);
-					}
+					const micromatchCache = new Map<string, string[]>();
 
-					for (const [pattern, cmdList] of patternToCommands) {
-						for (const { key, command } of cmdList) {
-							if (!keyToCommand.has(key)) {
-								keyToCommand.set(key, command);
-							}
-
-							let patternList = keyToPatterns.get(key);
-							if (!patternList) {
-								patternList = [];
-								keyToPatterns.set(key, patternList);
-							}
-							patternList.push(pattern);
-						}
-					}
-
-					// 3. Run micromatch for each unique command group
 					for (const [key, patternsForCommand] of keyToPatterns) {
 						const command = keyToCommand.get(key);
 						if (!command) continue;
 
-						// Optimization: Use matchedFiles instead of stagedFiles.
-						// Since matchedFiles is the subset of stagedFiles that matched ANY pattern,
-						// any file matching patternsForCommand MUST be in matchedFiles.
-						const matchingFiles = mm(matchedFiles, patternsForCommand, {
-							matchBase: true,
-						});
+						const cacheKey = patternsForCommand.join("\0");
+						let matchingFiles = micromatchCache.get(cacheKey);
 
-						if (matchingFiles.length > 0) {
-							processListOfCommands([command], matchingFiles);
+						if (matchingFiles === undefined) {
+							matchingFiles =
+								patternsForCommand.length === patterns.length
+									? matchedFiles
+									: mm(matchedFiles, patternsForCommand, { matchBase: true });
+							micromatchCache.set(cacheKey, matchingFiles);
 						}
+
+						if (matchingFiles.length > 0)
+							addCommandBatch([command], matchingFiles);
 					}
 				}
 			}
 		}
-	}
-	// Case 2: Unconditional configuration
-	else {
+	} else {
+		// Optimization: For simple hooks, bypass grouping logic completely.
 		const commandsToProcess = getCommands(hookConfig);
-		processListOfCommands(commandsToProcess, stagedFiles ?? []);
+		const files = stagedFiles ?? [];
+		for (const command of commandsToProcess) {
+			scriptsToRun.push(processCommand(command, files, false));
+		}
+		return { scripts: scriptsToRun, matchedFiles };
 	}
 
 	for (const batch of batchedCommands.values()) {
@@ -290,34 +291,35 @@ export async function resolveScriptsToRun(
  */
 function executeScript(executable: Executable): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const displayScript =
-			typeof executable === "string"
-				? executable
-				: `${executable.script} ${executable.args.join(" ")}`;
+		const isStringExecutable = typeof executable === "string";
+
+		const displayScript = isStringExecutable
+			? executable
+			: `${executable.script} ${executable.args.join(" ")}`;
+
 		logger.info(`Running script: ${displayScript}`);
 
 		const packageManager = getPackageManager();
-		let child: ChildProcess;
 
-		if (typeof executable === "string") {
+		let spawnArgs: string[];
+		let useShell: boolean;
+
+		if (isStringExecutable) {
 			// The entire script string (command + args) is passed to `npm run` (or pnpm/yarn).
 			// `shell: true` allows the shell to parse the command and its arguments.
-			child = spawn(packageManager, ["run", executable], {
-				stdio: "inherit",
-				shell: true,
-			});
+			spawnArgs = ["run", executable];
+			useShell = true;
 		} else {
 			// Optimization: Avoid shell spawn by passing arguments directly.
 			// This is faster and avoids issues with unquoted arguments.
-			child = spawn(
-				packageManager,
-				["run", executable.script, ...executable.args],
-				{
-					stdio: "inherit",
-					shell: false,
-				},
-			);
+			spawnArgs = ["run", executable.script, ...executable.args];
+			useShell = false;
 		}
+
+		const child = spawn(packageManager, spawnArgs, {
+			stdio: "inherit",
+			shell: useShell,
+		});
 
 		child.on("close", (code) => {
 			if (code === 0) {
@@ -416,13 +418,110 @@ async function safeRestore(options: {
 }
 
 /**
+ * Determines the Git status (staged, untracked, unstaged) based on the hook configuration and current environment.
+ */
+async function determineGitStatus(
+	_needsStash: boolean,
+	needsStagedFiles: boolean,
+	initialGitStatus: {
+		stagedFiles: string[];
+		untrackedItems: string[];
+		unstagedChangesExist: boolean;
+	} | null,
+): Promise<{
+	stagedFiles: string[];
+	untrackedItems: string[];
+	unstagedChangesExist: boolean;
+}> {
+	// If we already fetched status (because needsStash was true), return it
+	if (initialGitStatus) {
+		return initialGitStatus;
+	}
+
+	// If we didn't fetch status yet (needsStash was false), but we need staged files (e.g. glob hook in commit-msg?)
+	if (needsStagedFiles) {
+		const staged = await getStagedFiles();
+		return {
+			stagedFiles: staged,
+			untrackedItems: [],
+			unstagedChangesExist: false,
+		};
+	}
+
+	return { stagedFiles: [], untrackedItems: [], unstagedChangesExist: false };
+}
+
+/**
+ * Registers signal handlers for SIGINT and SIGTERM to ensure cleanup is performed.
+ * @returns A cleanup function to remove the handlers.
+ */
+function registerSignalHandlers(onSignal: (code: number) => void): () => void {
+	const onSigInt = () => onSignal(130);
+	const onSigTerm = () => onSignal(143);
+
+	process.on("SIGINT", onSigInt);
+	process.on("SIGTERM", onSigTerm);
+
+	return () => {
+		process.off("SIGINT", onSigInt);
+		process.off("SIGTERM", onSigTerm);
+	};
+}
+
+/**
+ * Performs "Hybrid Stashing": backs up untracked files physically and stashes tracked unstaged changes.
+ */
+async function performHybridStashing(
+	untrackedItems: string[],
+	unstagedChangesExist: boolean,
+): Promise<{ evacuatedDir: string | null; stashCreated: boolean }> {
+	let evacuatedDir: string | null = null;
+	let stashCreated = false;
+	const stashTasks: Promise<void>[] = [];
+
+	// 1. Untracked Files (Physical Backup)
+	if (untrackedItems.length > 0) {
+		evacuatedDir = join(
+			".git",
+			"ts-git-hooks",
+			"backups",
+			`${process.pid}_${Date.now()}`,
+		);
+		stashTasks.push(
+			evacuateFiles(untrackedItems, evacuatedDir).then(() => {
+				logger.info(
+					`Evacuated ${untrackedItems.length} untracked items to physical backup.`,
+				);
+			}),
+		);
+	}
+
+	// 2. Tracked Files (Conditional git stash)
+	if (unstagedChangesExist) {
+		stashTasks.push(
+			stashPushKeepIndex().then((created) => {
+				stashCreated = created;
+				if (stashCreated) {
+					logger.info("Stashed unstaged tracked changes.");
+				}
+			}),
+		);
+	}
+
+	if (stashTasks.length > 0) {
+		await Promise.all(stashTasks);
+	}
+
+	return { evacuatedDir, stashCreated };
+}
+
+/**
  * Runs the configured scripts for a given git hook.
  * @param hookName The name of the git hook being triggered.
  * @returns A promise that resolves to `true` if the hook succeeds, `false` otherwise.
  */
 export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	// Optimization: Start checking git status immediately if we know we'll likely need it (e.g. pre-commit)
-	// This runs in parallel with config loading.
 	const needsStash = !hooksSkippingStash.has(hookName);
 
 	const [config, initialGitStatus] = await Promise.all([
@@ -459,25 +558,8 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	// Determine if we need staged files based on the now-loaded config
 	const needsStagedFiles = shouldFetchStagedFiles(hookConfig);
 
-	const [stagedFiles, untrackedItems, unstagedChangesExist] =
-		await (async () => {
-			// If we already fetched status (because needsStash was true), return it
-			if (initialGitStatus) {
-				return [
-					initialGitStatus.stagedFiles,
-					initialGitStatus.untrackedItems,
-					initialGitStatus.unstagedChangesExist,
-				] as [string[], string[], boolean];
-			}
-
-			// If we didn't fetch status yet (needsStash was false), but we need staged files (e.g. glob hook in commit-msg?)
-			if (needsStagedFiles) {
-				const staged = await getStagedFiles();
-				return [staged, [], false] as [string[], string[], boolean];
-			}
-
-			return [[], [], false] as [string[], string[], boolean];
-		})();
+	const { stagedFiles, untrackedItems, unstagedChangesExist } =
+		await determineGitStatus(needsStash, needsStagedFiles, initialGitStatus);
 
 	const { scripts: finalScripts, matchedFiles } = await resolveScriptsToRun(
 		hookConfig,
@@ -493,66 +575,25 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	let evacuatedDir: string | null = null;
 	let restorationCalled = false;
 
-	/**
-	 * Guarded restoration function to ensure it only runs once.
-	 */
 	const performRestoration = async (silent = false) => {
 		if (restorationCalled) return;
 		restorationCalled = true;
 		await safeRestore({ stashCreated, evacuatedDir, silent });
 	};
 
-	const onSigInt = () => onSignal(130);
-	const onSigTerm = () => onSignal(143);
-
-	// Register signal handlers for robust restoration (Failure-safe requirement)
-	async function onSignal(code: number) {
+	const unregister = registerSignalHandlers(async (code) => {
 		await performRestoration(true);
 		process.exit(code);
-	}
-
-	process.on("SIGINT", onSigInt);
-	process.on("SIGTERM", onSigTerm);
+	});
 
 	try {
-		// Hybrid Stashing Implementation:
 		if (needsStash) {
-			const stashTasks: Promise<void>[] = [];
-
-			// 2. Untracked Files (Physical Backup)
-			if (untrackedItems.length > 0) {
-				evacuatedDir = join(
-					".git",
-					"ts-git-hooks",
-					"backups",
-					`${process.pid}_${Date.now()}`,
-				);
-				stashTasks.push(
-					evacuateFiles(untrackedItems, evacuatedDir).then(() => {
-						logger.info(
-							`Evacuated ${untrackedItems.length} untracked items to physical backup.`,
-						);
-					}),
-				);
-			}
-
-			// 3. Tracked Files (Conditional git stash)
-			// Check whether there are unstaged tracked changes.
-			if (unstagedChangesExist) {
-				// Only if unstaged changes exist: Run git stash push --keep-index
-				stashTasks.push(
-					stashPushKeepIndex().then((created) => {
-						stashCreated = created;
-						if (stashCreated) {
-							logger.info("Stashed unstaged tracked changes.");
-						}
-					}),
-				);
-			}
-
-			if (stashTasks.length > 0) {
-				await Promise.all(stashTasks);
-			}
+			const result = await performHybridStashing(
+				untrackedItems,
+				unstagedChangesExist,
+			);
+			stashCreated = result.stashCreated;
+			evacuatedDir = result.evacuatedDir;
 		}
 
 		logger.info(
@@ -567,7 +608,7 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 			await Promise.all(finalScripts.map((script) => executeScript(script)));
 		}
 
-		// 5. For pre-commit, stage any changes made by the scripts
+		// For pre-commit, stage any changes made by the scripts
 		if (hookName === "pre-commit") {
 			const changedFiles = await getChangedFiles(matchedFiles ?? undefined);
 			if (changedFiles.length > 0) {
@@ -585,11 +626,7 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		}
 		return false;
 	} finally {
-		// Remove signal handlers to avoid memory leaks and double restoration
-		process.off("SIGINT", onSigInt);
-		process.off("SIGTERM", onSigTerm);
-
-		// 6. Restoration (MUST be failure-safe)
+		unregister();
 		await performRestoration(false);
 	}
 }
