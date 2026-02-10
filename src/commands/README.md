@@ -11,10 +11,11 @@ This directory contains the implementation for each of the CLI subcommands suppo
 
 ## File Structure
 
--   `list.ts`: Contains the `list()` function. It will use the `config-loader` from `/core` to fetch the configuration and then pretty-print it to the console.
--   `init.ts`: Contains the `init()` function. It will create a template `git-hooks.config.ts` file in the user's project root.
--   `install.ts`: Contains the `install()` function. It will read the configuration and create the necessary hook scripts in the `.git/hooks/` directory. These scripts will be simple wrappers that call `npx ts-git-hooks run <hook-name>`.
--   `uninstall.ts`: Contains the `uninstall()` function. It will remove the hook scripts created by the `install` command.
--   `run.ts`: Contains the `run()` function. This is a special internal command called by the git hook scripts themselves. It takes a hook name (e.g., `pre-commit`) as an argument, loads the config, and executes the associated scripts using the parallel runner from `/core`.
+-   `list.ts`: Contains the `list()` function. It uses the `loadConfig` from `/core` to fetch the configuration and then pretty-prints it to the console.
+-   `init.ts`: Contains the `init()` function. It creates a template `git-hooks.config.ts` file and a `git-hooks.d.ts` file in the project root.
+-   `install.ts`: Contains the `install()` function. It creates the necessary hook scripts in the `.git/hooks/` directory. These scripts call `ts-git-hooks run <hook-name>`.
+-   `uninstall.ts`: Contains the `uninstall()` function. It removes the hook scripts created by the `install` command.
+-   `sync.ts`: Contains the `sync()` function. It updates the `git-hooks.d.ts` file with script names from `package.json`.
+-   `verify.ts`: Contains the `verify()` function. It allows users to see what commands would be executed for a given hook based on the current staged files without actually running them.
 
 By isolating each command's logic, we make the system easier to debug and test. For instance, `list.ts` can be tested independently of `install.ts`.
