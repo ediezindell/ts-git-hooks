@@ -2,10 +2,10 @@
 	"name": "ts-git-hooks",
 	"version": "1.0.0",
 	"description": "TypeScript-first git hooks manager with type-safe configuration.",
-	"main": "dist/index.cjs",
+	"main": "dist/bundle.js",
 	"types": "dist/index.d.ts",
 	"bin": {
-		"ts-git-hooks": "dist/cli/index.cjs"
+		"ts-git-hooks": "dist/cli.js"
 	},
 	"scripts": {
 		"test": "vitest",
@@ -15,7 +15,7 @@
 		"check": "biome check --write src",
 		"build": "tsgo && rolldown -c rolldown.config.mjs",
 		"typecheck": "tsgo --noEmit",
-		"ts-git-hooks": "ts-git-hooks",
+		"ts-git-hooks": "./dist/cli.js",
 		"prepare": "npm run build",
 		"echo": "echo"
 	},
@@ -48,7 +48,6 @@
 		"jiti": "^2.6.1",
 		"micromatch": "^4.0.8",
 		"picocolors": "^1.1.1",
-		"ts-git-hooks": "file:vendor/ts-git-hooks",
 		"valibot": "^1.2.0"
 	},
 	"type": "commonjs"

@@ -12,7 +12,7 @@ export default defineConfig([
 		platform: "node",
 		external,
 		output: {
-			file: "dist/index.cjs",
+			file: "dist/bundle.js",
 			format: "cjs",
 		},
 	},
@@ -21,7 +21,7 @@ export default defineConfig([
 		platform: "node",
 		external,
 		output: {
-			file: "dist/cli/index.cjs",
+			file: "dist/cli.js",
 			format: "cjs",
 		},
 	},
