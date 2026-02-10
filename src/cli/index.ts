@@ -1,10 +1,39 @@
 #!/usr/bin/env node
 
+import { spawn } from "node:child_process";
 import type { GitHook } from "../types.js";
 import { toKebabCase } from "../utils/casing.js";
 import { logger } from "../utils/logger.js";
 
+/**
+ * Self-respawn with --experimental-strip-types if not already present.
+ * This allows native loading of .ts config files without jiti.
+ */
+function ensureRuntimeFlags() {
+	const args = process.execArgv;
+	const hasFlag = args.includes("--experimental-strip-types") || args.includes("--experimental-transform-types");
+
+	if (!hasFlag) {
+		const nodeVersion = process.versions.node.split(".").map(Number);
+		if (nodeVersion[0] < 22 || (nodeVersion[0] === 22 && nodeVersion[1] < 6)) {
+			logger.error("ts-git-hooks requires Node.js v22.6.0 or higher for native TypeScript support.");
+			process.exit(1);
+		}
+
+		const child = spawn(
+			process.execPath,
+			["--experimental-strip-types", ...process.execArgv, ...process.argv],
+			{ stdio: "inherit" },
+		);
+		child.on("close", (code) => process.exit(code ?? 0));
+		return true;
+	}
+	return false;
+}
+
 export async function main() {
+	if (ensureRuntimeFlags()) return;
+
 	const command = process.argv[2];
 	const args = process.argv.slice(3);
 

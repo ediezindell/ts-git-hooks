@@ -39,11 +39,6 @@ const ConfigSchema = v.intersect([
 	v.record(v.string(), v.union([v.boolean(), HookValueSchema])),
 ]);
 
-// Define a minimal type for jiti to avoid importing the whole package type at top-level
-type JitiInstance = (name: string) => { config?: unknown };
-
-// Memoize jiti instance to avoid repeated initialization overhead
-let _jiti: JitiInstance | undefined;
 // Memoize loaded configuration to avoid repeated parsing and normalization in the same process
 let _memoizedConfig: TSGitHookConfig | null = null;
 
@@ -84,18 +79,6 @@ export function isGlobHookConfig<T extends string>(
 }
 
 /**
- * Initializes and returns the jiti instance for dynamic TypeScript loading.
- */
-async function getJiti(): Promise<JitiInstance> {
-	if (!_jiti) {
-		const jitiModule = await import("jiti");
-		const createJiti = jitiModule.default;
-		_jiti = createJiti(__filename) as unknown as JitiInstance;
-	}
-	return _jiti;
-}
-
-/**
  * Normalizes configuration by converting all hook names to camelCase.
  * @param config The raw configuration object.
  */
@@ -122,7 +105,7 @@ function normalizeConfig(config: TSGitHookConfig): TSGitHookConfig {
 
 /**
  * Loads the ts-git-hooks configuration from the project root.
- * It uses `jiti` to require the TypeScript configuration file on the fly.
+ * It uses native dynamic import which supports TypeScript in modern Node.js.
  * @returns The loaded configuration object, or null if the file doesn't exist.
  */
 export async function loadConfig(): Promise<TSGitHookConfig | null> {
@@ -132,14 +115,15 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 
 	const configFilePath = path.join(process.cwd(), configFileName);
 
-	// Optimization: Check if file exists before loading jiti (~10-20ms saved)
+	// Optimization: Check if file exists before attempting to import
 	if (!(await fileExists(configFilePath))) {
 		return null;
 	}
 
 	try {
-		const jiti = await getJiti();
-		const configModule = jiti(configFilePath);
+		// Native import() works with TypeScript in Node.js 22.6+ with --experimental-strip-types
+		// or automatically in even newer versions.
+		const configModule = await import(configFilePath);
 
 		if (!configModule?.config) {
 			return null;
