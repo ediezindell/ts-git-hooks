@@ -1,6 +1,6 @@
 {
   "name": "ts-git-hooks",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "TypeScript-first git hooks manager with type-safe configuration.",
   "types": "dist/index.d.ts",
   "bin": {

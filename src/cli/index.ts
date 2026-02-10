@@ -22,7 +22,7 @@ function ensureRuntimeFlags() {
 
 		const child = spawn(
 			process.execPath,
-			["--experimental-strip-types", ...process.execArgv, ...process.argv],
+			["--experimental-strip-types", ...process.execArgv, ...process.argv.slice(1)],
 			{ stdio: "inherit" },
 		);
 		child.on("close", (code) => process.exit(code ?? 0));
