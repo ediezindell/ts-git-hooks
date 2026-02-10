@@ -108,6 +108,7 @@ export const config: TSGitHookConfig<"lint"> = {
 -   `npx ts-git-hooks install`: 設定に基づいて Git フックを `.git/hooks` ディレクトリにインストールします。
 -   `npx ts-git-hooks uninstall`: フックを削除します。
 -   `npx ts-git-hooks list`: 設定されているフックとスクリプトを一覧表示します。
+-   `npx ts-git-hooks verify <hook>`: フックの設定を検証し、実行されるコマンドを表示します。
 -   `npx ts-git-hooks run <hook>`: 特定のフックのスクリプトを実行します (内部使用向け)。
 
 ## 仕組み

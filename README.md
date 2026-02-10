@@ -111,6 +111,7 @@ All standard git hooks are supported. Both camelCase (`preCommit`) and kebab-cas
 -   `npx ts-git-hooks install`: Installs the hooks into your `.git/hooks` directory.
 -   `npx ts-git-hooks uninstall`: Removes the hooks.
 -   `npx ts-git-hooks list`: Lists the configured hooks and scripts.
+-   `npx ts-git-hooks verify <hook>`: Verifies the configuration for a hook and shows which commands would be executed.
 -   `npx ts-git-hooks run <hook>`: Run the scripts for a specific hook (for internal use).
 
 

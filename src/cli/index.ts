@@ -64,6 +64,19 @@ export async function main() {
 			break;
 		}
 
+		case "verify": {
+			const hookName = args[0] as GitHook;
+			if (!hookName) {
+				logger.error('Error: "verify" command requires a hook name.');
+				logger.log("Example: ts-git-hooks verify pre-commit");
+				process.exit(1);
+				return;
+			}
+			const { verify } = await import("../commands/verify.js");
+			await verify(toKebabCase(hookName as GitHook));
+			break;
+		}
+
 		case "sync": {
 			const { sync } = await import("../commands/sync.js");
 			await sync();
@@ -94,12 +107,13 @@ export async function main() {
 Usage: ts-git-hooks <command>
 
 Available commands:
-  init        Create a default configuration file and sync script types.
-  sync        Update script type definitions from package.json.
-  install     Install git hooks based on the configuration.
-  uninstall   Remove installed git hooks.
-  list        List all configured hooks.
-  run <hook>  Run the scripts for a specific hook (for internal use).
+  init          Create a default configuration file and sync script types.
+  sync          Update script type definitions from package.json.
+  install       Install git hooks based on the configuration.
+  uninstall     Remove installed git hooks.
+  list          List all configured hooks.
+  verify <hook> Verify the configuration for a hook and show commands to be run.
+  run <hook>    Run the scripts for a specific hook (for internal use).
       `);
 			break;
 
