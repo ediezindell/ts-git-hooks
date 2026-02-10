@@ -1,28 +1,18 @@
 import { defineConfig } from "rolldown";
-import pkg from "./package.json" with { type: "json" };
 
-const external = [
-	...Object.keys(pkg.dependencies || {}),
-	/^node:/,
-];
+const external = [/^node:/];
 
-export default defineConfig([
-	{
-		input: "dist/index.js",
-		platform: "node",
-		external,
-		output: {
-			file: "dist/bundle.js",
-			format: "cjs",
-		},
-	},
-	{
-		input: "dist/cli/index.js",
-		platform: "node",
-		external,
-		output: {
-			file: "dist/cli.js",
-			format: "cjs",
-		},
-	},
-]);
+export default defineConfig({
+  input: {
+    cli: "src/cli/index.ts",
+  },
+  platform: "node",
+  external,
+  output: {
+    dir: "dist",
+    format: "cjs",
+    entryFileNames: "[name].js",
+    chunkFileNames: "chunks/[name]-[hash].js",
+    sourcemap: true,
+  },
+});
