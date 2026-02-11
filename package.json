@@ -7,7 +7,7 @@
     "ts-git-hooks": "dist/cli.js"
   },
   "scripts": {
-    "test": "vitest",
+    "test": "NODE_OPTIONS='--experimental-strip-types' vitest",
     "test:e2e": "vitest --config vitest.e2e.config.ts",
     "lint": "biome lint .",
     "format": "biome format --write src",

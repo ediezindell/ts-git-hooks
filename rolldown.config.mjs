@@ -1,6 +1,6 @@
 import { defineConfig } from "rolldown";
 
-const external = [/^node:/];
+const external = [/^node:/, "jiti"];
 
 export default defineConfig({
   input: {

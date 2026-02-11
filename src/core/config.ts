@@ -1,4 +1,5 @@
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import * as v from "valibot";
 import type {
 	CamelCaseGitHook,
@@ -41,12 +42,21 @@ const ConfigSchema = v.intersect([
 
 // Memoize loaded configuration to avoid repeated parsing and normalization in the same process
 let _memoizedConfig: TSGitHookConfig | null = null;
+let _configFileName = "git-hooks.config.ts";
+
+/**
+ * For testing purposes ONLY. Sets the configuration file name to load.
+ */
+export const _setConfigFileName = (name: string) => {
+	_configFileName = name;
+};
 
 /**
  * For testing purposes ONLY. Resets the memoized configuration.
  */
 export const _resetConfig = () => {
 	_memoizedConfig = null;
+	_configFileName = "git-hooks.config.ts";
 };
 
 /**
@@ -113,7 +123,7 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 		return _memoizedConfig;
 	}
 
-	const configFilePath = path.join(process.cwd(), configFileName);
+	const configFilePath = path.join(process.cwd(), _configFileName);
 
 	// Optimization: Check if file exists before attempting to import
 	if (!(await fileExists(configFilePath))) {
@@ -123,7 +133,8 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 	try {
 		// Native import() works with TypeScript in Node.js 22.6+ with --experimental-strip-types
 		// or automatically in even newer versions.
-		const configModule = await import(configFilePath);
+		const fileUrl = pathToFileURL(configFilePath).href;
+		const configModule = await import(`${fileUrl}?t=${Date.now()}`);
 
 		if (!configModule?.config) {
 			return null;
@@ -133,7 +144,7 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 		const result = v.safeParse(ConfigSchema, configModule.config);
 		if (!result.success) {
 			console.warn(
-				`Invalid configuration in ${configFileName}:`,
+				`Invalid configuration in ${_configFileName}:`,
 				v.flatten(result.issues).nested,
 			);
 		}
@@ -142,7 +153,7 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 		return _memoizedConfig;
 	} catch (error: unknown) {
 		// For other errors, log them as they might be syntax errors in the config.
-		console.error(`Error loading ${configFileName}:`, error);
+		console.error(`Error loading ${_configFileName}:`, error);
 		return null;
 	}
 }

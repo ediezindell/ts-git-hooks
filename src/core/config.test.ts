@@ -1,49 +1,63 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fileExists } from "../utils/fs";
-import { _resetConfig, loadConfig } from "./config";
-
-// Mock jiti and fs
-vi.mock("../utils/fs");
-const mockJitiInstance = vi.fn();
-vi.mock("jiti", () => ({
-	default: vi.fn(() => mockJitiInstance),
-}));
+import { _resetConfig, _setConfigFileName, loadConfig } from "./config";
 
 describe("loadConfig validation", () => {
-	beforeEach(() => {
+	let testConfigPath: string;
+	let currentConfigName: string;
+
+	beforeEach(async () => {
 		_resetConfig();
-		vi.mocked(fileExists).mockResolvedValue(true);
 		vi.spyOn(console, "warn").mockImplementation(() => {});
-		mockJitiInstance.mockReset();
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
 		vi.restoreAllMocks();
+		if (testConfigPath) {
+			try {
+				await fs.unlink(testConfigPath);
+			} catch {
+				// Ignore if file doesn't exist
+			}
+		}
 	});
+
+	async function writeTestConfig(name: string, content: string) {
+		currentConfigName = `${name}.${Date.now()}.${Math.random().toString(36).slice(2)}.ts`;
+		_setConfigFileName(currentConfigName);
+		testConfigPath = path.join(process.cwd(), currentConfigName);
+		await fs.writeFile(testConfigPath, content);
+	}
 
 	it("should warn when configuration is invalid", async () => {
-		// Mock jiti to return an invalid config (e.g., number instead of string for script)
-		mockJitiInstance.mockReturnValue({
-			config: {
-				"pre-commit": 123, // Invalid: should be string, array, or object
-			},
-		});
+		await writeTestConfig(
+			"invalid",
+			`
+      export const config = {
+        "pre-commit": 123
+      };
+    `,
+		);
 
 		await loadConfig();
 
 		expect(console.warn).toHaveBeenCalledWith(
-			expect.stringContaining("Invalid configuration in git-hooks.config.ts:"),
+			expect.stringContaining(`Invalid configuration in ${currentConfigName}:`),
 			expect.any(Object),
 		);
 	});
 
 	it("should NOT warn when configuration is valid", async () => {
-		mockJitiInstance.mockReturnValue({
-			config: {
-				"pre-commit": { "*.ts": "lint" },
-				"pre-push": ["test", "build"],
-			},
-		});
+		await writeTestConfig(
+			"valid",
+			`
+      export const config = {
+        "pre-commit": { "*.ts": "lint" },
+        "pre-push": ["test", "build"]
+      };
+    `,
+		);
 
 		await loadConfig();
 
@@ -51,12 +65,15 @@ describe("loadConfig validation", () => {
 	});
 
 	it("should handle hook names in kebab-case and camelCase", async () => {
-		mockJitiInstance.mockReturnValue({
-			config: {
-				"pre-commit": "lint",
-				prePush: "test",
-			},
-		});
+		await writeTestConfig(
+			"naming",
+			`
+      export const config = {
+        "pre-commit": "lint",
+        prePush: "test"
+      };
+    `,
+		);
 
 		const config = await loadConfig();
 
@@ -68,15 +85,18 @@ describe("loadConfig validation", () => {
 	});
 
 	it("should handle configuration with sequential options", async () => {
-		mockJitiInstance.mockReturnValue({
-			config: {
-				sequential: true,
-				"pre-commit": {
-					sequential: false,
-					config: { "*.ts": "lint" },
-				},
-			},
-		});
+		await writeTestConfig(
+			"sequential",
+			`
+      export const config = {
+        sequential: true,
+        "pre-commit": {
+          sequential: false,
+          config: { "*.ts": "lint" }
+        }
+      };
+    `,
+		);
 
 		const config = await loadConfig();
 
