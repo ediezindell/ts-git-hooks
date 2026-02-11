@@ -1,54 +1,53 @@
 {
-  "name": "ts-git-hooks",
-  "version": "0.1.0",
-  "description": "TypeScript-first git hooks manager with type-safe configuration.",
-  "types": "dist/index.d.ts",
-  "bin": {
-    "ts-git-hooks": "bin/cli.js"
-  },
-  "scripts": {
-    "test": "NODE_OPTIONS='--experimental-strip-types' vitest",
-    "test:e2e": "vitest --config vitest.e2e.config.ts",
-    "lint": "biome lint .",
-    "format": "biome format --write src",
-    "check": "biome check --write src",
-    "build": "rolldown -c rolldown.config.mjs && tsgo --emitDeclarationOnly --declaration --outDir dist",
-    "typecheck": "tsgo --noEmit",
-    "ts-git-hooks": "./bin/cli.js",
-    "prepare": "npm run build",
-    "echo": "echo"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/ediezindell/ts-git-hooks.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/ediezindell/ts-git-hooks/issues"
-  },
-  "homepage": "https://github.com/ediezindell/ts-git-hooks#readme",
-  "files": [
-    "bin",
-    "dist",
-    "README.md"
-  ],
-  "engines": {
-    "node": ">=22.6.0"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.2.6",
-    "@types/micromatch": "^4.0.9",
-    "@types/node": "^24.6.2",
-    "@typescript/native-preview": "7.0.0-dev.20260124.1",
-    "micromatch": "^4.0.8",
-    "npm-run-all": "^4.1.5",
-    "picocolors": "^1.1.1",
-    "rolldown": "1.0.0-rc.3",
-    "typescript": "^5.9.3",
-    "valibot": "^1.2.0",
-    "vitest": "^3.2.4"
-  },
-  "type": "commonjs"
+	"name": "ts-git-hooks",
+	"version": "0.1.0",
+	"description": "TypeScript-first git hooks manager with type-safe configuration.",
+	"types": "dist/index.d.ts",
+	"bin": {
+		"ts-git-hooks": "dist/cli.js"
+	},
+	"scripts": {
+		"test": "NODE_OPTIONS='--experimental-strip-types' vitest",
+		"test:e2e": "vitest --config vitest.e2e.config.ts",
+		"lint": "biome lint .",
+		"format": "biome format --write src",
+		"check": "biome check --write src",
+		"build": "rolldown -c rolldown.config.mjs && tsgo --emitDeclarationOnly --declaration --outDir dist",
+		"typecheck": "tsgo --noEmit",
+
+		"prepare": "npm run build",
+		"echo": "echo"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/ediezindell/ts-git-hooks.git"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/ediezindell/ts-git-hooks/issues"
+	},
+	"homepage": "https://github.com/ediezindell/ts-git-hooks#readme",
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"engines": {
+		"node": ">=22.6.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.2.6",
+		"@types/micromatch": "^4.0.9",
+		"@types/node": "^24.6.2",
+		"@typescript/native-preview": "7.0.0-dev.20260124.1",
+		"micromatch": "^4.0.8",
+		"npm-run-all": "^4.1.5",
+		"picocolors": "^1.1.1",
+		"rolldown": "1.0.0-rc.3",
+		"typescript": "^5.9.3",
+		"valibot": "^1.2.0",
+		"vitest": "^3.2.4"
+	},
+	"type": "commonjs"
 }
