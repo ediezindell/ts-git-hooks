@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 describe("CLI Distribution Test (E2E)", () => {
 	const rootDir = process.cwd();
-	const distPath = path.join(rootDir, "cli.js");
+	const distPath = path.join(rootDir, "bin/cli.js");
 	let testDir: string;
 
 	beforeAll(async () => {

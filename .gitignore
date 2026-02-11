@@ -2,11 +2,7 @@
 /node_modules
 
 # Build artifacts
-/cli.js
-/cli.js.map
-/chunks/
-/*.d.ts
-!/src/**/*.d.ts
+/dist
 
 # Logs
 npm-debug.log*

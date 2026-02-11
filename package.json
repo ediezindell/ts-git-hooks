@@ -2,9 +2,9 @@
   "name": "ts-git-hooks",
   "version": "0.1.0",
   "description": "TypeScript-first git hooks manager with type-safe configuration.",
-  "types": "index.d.ts",
+  "types": "dist/index.d.ts",
   "bin": {
-    "ts-git-hooks": "cli.js"
+    "ts-git-hooks": "bin/cli.js"
   },
   "scripts": {
     "test": "NODE_OPTIONS='--experimental-strip-types' vitest",
@@ -12,9 +12,9 @@
     "lint": "biome lint .",
     "format": "biome format --write src",
     "check": "biome check --write src",
-    "build": "rolldown -c rolldown.config.mjs && tsgo --emitDeclarationOnly --declaration --outDir .",
+    "build": "rolldown -c rolldown.config.mjs && tsgo --emitDeclarationOnly --declaration --outDir dist",
     "typecheck": "tsgo --noEmit",
-    "ts-git-hooks": "./cli.js",
+    "ts-git-hooks": "./bin/cli.js",
     "prepare": "npm run build",
     "echo": "echo"
   },
@@ -30,11 +30,8 @@
   },
   "homepage": "https://github.com/ediezindell/ts-git-hooks#readme",
   "files": [
-    "cli.js",
-    "cli.js.map",
-    "chunks",
-    "index.d.ts",
-    "types.d.ts",
+    "bin",
+    "dist",
     "README.md"
   ],
   "engines": {
