@@ -8,11 +8,12 @@ export default defineConfig({
   },
   platform: "node",
   external,
-  output: {
-    dir: "dist",
-    format: "cjs",
-    entryFileNames: "[name].js",
-    chunkFileNames: "chunks/[name]-[hash].js",
-    sourcemap: true,
-  },
-});
+    output: {
+      dir: ".",
+      format: "cjs",
+      entryFileNames: "[name].js",
+      chunkFileNames: "chunks/[name]-[hash].js",
+      sourcemap: true,
+    },
+  });
+  
