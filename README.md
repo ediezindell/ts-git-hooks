@@ -9,7 +9,7 @@ TypeScript-first, type-safe Git hooks manager.
 -   **Type-safe**: Auto-completion for your `package.json` scripts.
 -   **Flexible Config**: Use glob patterns for file-based hooks (`pre-commit`) or simple scripts for general hooks (`pre-push`).
 -   **TypeScript First**: Write your config in `.ts` with full IDE support.
--   **Zero Runtime Dependencies**: `ts-git-hooks` leverages native Node.js features to run without external dependencies.
+-   **Minimal Dependencies**: `ts-git-hooks` uses only 3 lightweight, well-maintained dependencies for essential functionality.
 
 ## Requirements
 
