@@ -9,6 +9,12 @@ const ICONS = {
 	error: pc.red("❌"),
 } as const;
 
+/**
+ * Extracts a message string from an unknown error type.
+ */
+const formatError = (err: unknown): string =>
+	err instanceof Error ? err.message : String(err);
+
 export const logger = {
 	log: (message: string) => {
 		console.log(message);
@@ -23,12 +29,7 @@ export const logger = {
 		console.log(`${PREFIX} ${ICONS.warn}  ${message}`);
 	},
 	error: (message: unknown) => {
-		const msg =
-			message instanceof Error
-				? message.message
-				: typeof message === "string"
-					? message
-					: String(message);
+		const msg = formatError(message);
 
 		console.error(`${PREFIX} ${ICONS.error} ${msg}`);
 
@@ -43,15 +44,14 @@ export const logger = {
 		const scopedPrefix = pc.bold(pc.gray(`[${label}]`));
 		return {
 			info: (message: string) => {
-				console.log(`${PREFIX} ${scopedPrefix} ${pc.blue("ℹ")}  ${message}`);
+				console.log(`${PREFIX} ${scopedPrefix} ${ICONS.info}  ${message}`);
 			},
 			success: (message: string) => {
-				console.log(`${PREFIX} ${scopedPrefix} ${pc.green("✅")} ${message}`);
+				console.log(`${PREFIX} ${scopedPrefix} ${ICONS.success} ${message}`);
 			},
-			error: (message: string | unknown) => {
-				const msg =
-					message instanceof Error ? message.message : String(message);
-				console.error(`${PREFIX} ${scopedPrefix} ${pc.red("❌")} ${msg}`);
+			error: (message: unknown) => {
+				const msg = formatError(message);
+				console.error(`${PREFIX} ${scopedPrefix} ${ICONS.error} ${msg}`);
 			},
 		};
 	},
