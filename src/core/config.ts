@@ -10,8 +10,6 @@ import type {
 import { fileExists } from "../utils/fs";
 import { kebabToCamel } from "../utils/string";
 
-const configFileName = "git-hooks.config.ts";
-
 /**
  * Valibot schema for Git hook configuration validation.
  */
