@@ -14,7 +14,6 @@
 		"check": "biome check --write src",
 		"build": "rolldown -c rolldown.config.mjs && tsgo --emitDeclarationOnly --declaration --outDir dist",
 		"typecheck": "tsgo --noEmit",
-
 		"prepare": "npm run build",
 		"echo": "echo"
 	},
@@ -39,12 +38,14 @@
 	"dependencies": {
 		"micromatch": "^4.0.8",
 		"picocolors": "^1.1.1",
+		"shell-quote": "^1.8.3",
 		"valibot": "^1.2.0"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.2.6",
 		"@types/micromatch": "^4.0.9",
 		"@types/node": "^24.6.2",
+		"@types/shell-quote": "^1.7.5",
 		"@typescript/native-preview": "7.0.0-dev.20260124.1",
 		"npm-run-all": "^4.1.5",
 		"rolldown": "1.0.0-rc.3",

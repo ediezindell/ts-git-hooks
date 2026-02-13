@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Options } from "micromatch";
+import { parse, quote } from "shell-quote";
 import type {
 	ArgsFn,
 	CamelCaseGitHook,
@@ -45,60 +46,75 @@ function isCommandTuple(value: unknown): value is [string, ArgsFn] {
 }
 
 /**
- * Parses a simple command string into a split Executable object.
- * Appends extra arguments (e.g. file paths) if provided.
+ * Processes a command into an Executable.
+ * Uses shell-quote for robust parsing and handles both string and tuple commands.
  */
-function parseSimpleCommand(
-	command: string,
-	extraArgs: string[] = [],
-): Executable {
-	// Optimization: For commands without arguments, we can split faster.
-	if (!command.includes(" ")) {
-		return extraArgs.length > 0
-			? { script: command, args: extraArgs }
-			: { script: command, args: [] };
-	}
-
-	const parts = command.split(/\s+/).filter((part) => part !== "");
-	const script = parts[0];
-	const args =
-		extraArgs.length > 0 ? [...parts.slice(1), ...extraArgs] : parts.slice(1);
-
-	return { script, args };
-}
-
 function processCommand(
 	command: Command<string>,
 	files: string[],
 	isGlob: boolean,
 ): Executable {
 	if (isCommandTuple(command)) {
-		// Command is a tuple: [script, formatArguments]
 		const [script, formatArguments] = command;
-		return formatArguments(files, script);
+		const result = formatArguments(files, script);
+		const parsed = parse(result);
+
+		const args: string[] = [];
+		let hasOperators = false;
+		for (const entry of parsed) {
+			if (typeof entry === "string") {
+				args.push(entry);
+			} else {
+				hasOperators = true;
+				break;
+			}
+		}
+
+		if (hasOperators) {
+			// If it has shell operators, we fallback to string execution.
+			// executeScript will prepend the package manager and 'run'.
+			return result;
+		}
+
+		// If the first parsed arg is the script name, we use it.
+		// Otherwise, we assume the result is arguments for the script from the tuple.
+		if (args.length > 0 && args[0] === script) {
+			return { script, args: args.slice(1) };
+		}
+		return { script, args };
 	}
 
-	// At this point, command is definitely a string (not a tuple).
 	const commandString = command as string;
-	const hasQuotes = commandString.includes('"') || commandString.includes("'");
+	const parsed = parse(commandString);
 
-	// For simple commands without quotes, we can parse them into script and args
-	// to avoid shell overhead if it's not a glob hook or if no files matched.
-	if (!hasQuotes) {
-		const extraArgs = isGlob ? files : [];
-		return parseSimpleCommand(commandString, extraArgs);
+	const args: string[] = [];
+	let hasOperators = false;
+	for (const entry of parsed) {
+		if (typeof entry === "string") {
+			args.push(entry);
+		} else {
+			hasOperators = true;
+			break;
+		}
 	}
 
-	// For commands with quotes, we generally return them as-is to be executed via shell.
-	// However, for glob-based hooks, we must append the matched files.
-	if (isGlob && files.length > 0) {
-		// We must quote the files because they are being interpolated into a shell command string.
-		// JSON.stringify is a safe enough way to quote filenames for shell (adds double quotes).
-		const quotedFiles = files.map((f) => JSON.stringify(f)).join(" ");
-		return `${commandString} ${quotedFiles}`;
+	// If there are shell operators, we must use shell: true.
+	// To fix the security vulnerability, we safely quote files before appending.
+	if (hasOperators) {
+		if (isGlob && files.length > 0) {
+			return `${commandString} ${quote(files)}`;
+		}
+		return commandString;
 	}
 
-	return commandString;
+	if (args.length === 0) {
+		return { script: "", args: isGlob ? files : [] };
+	}
+
+	return {
+		script: args[0],
+		args: [...args.slice(1), ...(isGlob ? files : [])],
+	};
 }
 
 /**
