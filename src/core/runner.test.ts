@@ -100,7 +100,7 @@ describe("runHook", () => {
 	it("should handle mixed hook types correctly", async () => {
 		const mockConfig: TSGitHookConfig = {
 			preCommit: {
-				"*.js": ["eslint", (files) => `eslint ${files.join(" ")}`],
+				"*.js": ["eslint", (files) => files.join(" ")],
 			},
 			prePush: "test",
 		};
@@ -118,10 +118,11 @@ describe("runHook", () => {
 
 		// Test pre-commit
 		const preCommitResult = await runHook("pre-commit");
-		// Custom function -> string -> shell: true
+		// Custom function -> object -> shell: false
 		expect(spawn).toHaveBeenCalledWith(
-			"npm run eslint my-file.js",
-			expect.objectContaining({ shell: true }),
+			"npm",
+			["run", "eslint", "my-file.js"],
+			expect.objectContaining({ shell: false }),
 		);
 		expect(preCommitResult).toBe(true);
 
@@ -271,7 +272,7 @@ describe("Glob-based (file-dependent) hook execution", () => {
 		expect(result).toBe(true);
 	});
 
-	it("should fallback to shell: true for glob hooks with quotes", async () => {
+	it("should handle glob hooks with quotes securely using shell: false", async () => {
 		vi.mocked(loadConfig).mockResolvedValue({
 			preCommit: { "*.ts": 'lint --config "my config"' },
 		});
@@ -283,10 +284,11 @@ describe("Glob-based (file-dependent) hook execution", () => {
 
 		const result = await runHook("pre-commit");
 
-		// Should use shell: true and quoted files
+		// Should use shell: false and correctly parsed arguments
 		expect(spawn).toHaveBeenCalledWith(
-			'npm run lint --config "my config" "src/index.ts"',
-			expect.objectContaining({ shell: true }),
+			"npm",
+			["run", "lint", "--config", "my config", "src/index.ts"],
+			expect.objectContaining({ shell: false }),
 		);
 		expect(result).toBe(true);
 	});
@@ -397,8 +399,7 @@ describe("resolveScriptsToRun", () => {
 	});
 
 	it("should batch identical tuple commands if function reference is same", async () => {
-		const myFn = (files: string[], script: string) =>
-			`${script} --files ${files.join(",")}`;
+		const myFn = (files: string[]) => `--files ${files.join(",")}`;
 		const hookConfig: GlobHookConfig<string> = {
 			"*.ts": ["lint", myFn],
 			"*.js": ["lint", myFn],
@@ -408,7 +409,10 @@ describe("resolveScriptsToRun", () => {
 		const { scripts } = await resolveScriptsToRun(hookConfig, stagedFiles);
 
 		expect(scripts).toHaveLength(1);
-		expect(scripts[0]).toMatch(/lint --files (a\.ts,b\.js|b\.js,a\.ts)/);
+		const executable = scripts[0] as { script: string; args: string[] };
+		expect(executable.script).toBe("lint");
+		expect(executable.args[0]).toBe("--files");
+		expect(executable.args[1]).toMatch(/^(a\.ts,b\.js|b\.js,a\.ts)$/);
 	});
 
 	it("should NOT batch if commands are different", async () => {
