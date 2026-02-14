@@ -12,3 +12,8 @@
 **Vulnerability:** Git hook names (derived from configuration keys) were used directly as filenames for hook installation and interpolated into shell scripts. Malicious keys like `pre-commit; touch exploited` or `../../../malicious-file` could lead to command execution or path traversal.
 **Learning:** Configuration keys are untrusted input, even if they are expected to match a specific type (like `GitHook`). Validation must occur at runtime before using these keys in security-sensitive operations like filesystem access or shell script generation.
 **Prevention:** Validate hook names against a strict allowlist or a safe regex (e.g., `/^[a-z0-9-]+$/`) before using them in file operations or shell scripts.
+
+## 2025-05-18 - Symlink Traversal during File Restoration
+**Vulnerability:** The `restoreFiles` function used `stat()` to check if a destination path was a directory. If an attacker created a symlink to a sensitive directory (like `/etc`), `stat()` would follow it, and the restoration process would move files into the symlink's target.
+**Learning:** `stat()` follows symbolic links, while `lstat()` does not. When performing recursive directory operations, especially in potentially untrusted working directories, `lstat()` should be used to avoid symlink traversal attacks.
+**Prevention:** Use `lstat()` when checking file types during recursive directory traversal or restoration processes to ensure you are acting on the literal path and not following symlinks to unintended locations.
