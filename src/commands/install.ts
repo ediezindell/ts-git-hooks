@@ -71,6 +71,14 @@ export async function install() {
 				if (!config[hookName]) return;
 
 				const kebabCaseHookName = toKebabCase(hookName);
+
+				// Security check: only allow valid hook names (alphanumeric and hyphens)
+				// This prevents path traversal and command injection in the generated script.
+				if (!/^[a-z0-9-]+$/.test(kebabCaseHookName)) {
+					logger.warn(`Skipping invalid hook name: ${kebabCaseHookName}`);
+					return;
+				}
+
 				const hookPath = path.join(gitHooksDir, kebabCaseHookName);
 
 				const command = getHookExecutionCommand(

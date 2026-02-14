@@ -82,8 +82,16 @@ export async function main() {
 				process.exit(1);
 				return;
 			}
+
+			const kebabHookName = toKebabCase(hookName as GitHook);
+			if (!/^[a-z0-9-]+$/.test(kebabHookName)) {
+				logger.error(`Error: Invalid hook name "${hookName}".`);
+				process.exit(1);
+				return;
+			}
+
 			const { verify } = await import("../commands/verify.js");
-			await verify(toKebabCase(hookName as GitHook));
+			await verify(kebabHookName);
 			break;
 		}
 
@@ -101,8 +109,16 @@ export async function main() {
 				process.exit(1);
 				return;
 			}
+
+			const kebabHookName = toKebabCase(hookName as GitHook);
+			if (!/^[a-z0-9-]+$/.test(kebabHookName)) {
+				logger.error(`Error: Invalid hook name "${hookName}".`);
+				process.exit(1);
+				return;
+			}
+
 			const { runHook } = await import("../core/runner.js");
-			const success = await runHook(toKebabCase(hookName as GitHook));
+			const success = await runHook(kebabHookName);
 			if (!success) {
 				process.exit(1);
 				return;
