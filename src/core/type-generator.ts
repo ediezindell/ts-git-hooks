@@ -12,7 +12,11 @@ function generateTypeDefContent(scriptNames: string[]): string {
 	if (scriptNames.length === 0) {
 		return "export type PackageScripts = never;\n";
 	}
-	const typeString = scriptNames.map((name) => `"${name}"`).join(" | ");
+	// Use JSON.stringify to safely escape script names for use in a TypeScript type definition.
+	// This prevents syntax injection (e.g., script names containing quotes) and code injection.
+	const typeString = scriptNames
+		.map((name) => JSON.stringify(name))
+		.join(" | ");
 	return `export type PackageScripts = ${typeString};\n`;
 }
 
