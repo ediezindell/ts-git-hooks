@@ -419,7 +419,7 @@ describe("restoreFiles", () => {
 			if (pathStr === "my_dir") {
 				return Promise.resolve({
 					isDirectory: () => false,
-					isSymbolicLink: () => true
+					isSymbolicLink: () => true,
 				} as any);
 			}
 			return Promise.reject(new Error("ENOENT"));
@@ -436,12 +436,17 @@ describe("restoreFiles", () => {
 
 		// It should throw an error instead of following the symlink
 		await expect(restoreFiles("backup")).rejects.toThrow(
-			'Conflict: Cannot restore directory to "my_dir" because a file already exists.'
+			'Conflict: Cannot restore directory to "my_dir" because a file already exists.',
 		);
 
-		const readdirCalls = vi.mocked(readdir).mock.calls.map(call => call[0].toString());
+		const readdirCalls = vi
+			.mocked(readdir)
+			.mock.calls.map((call) => call[0].toString());
 		expect(readdirCalls).not.toContain("backup/my_dir");
-		expect(rename).not.toHaveBeenCalledWith("backup/my_dir/secret.txt", "my_dir/secret.txt");
+		expect(rename).not.toHaveBeenCalledWith(
+			"backup/my_dir/secret.txt",
+			"my_dir/secret.txt",
+		);
 	});
 });
 
@@ -471,7 +476,7 @@ describe("addFiles", () => {
 			"--",
 			"-f",
 			"--version",
-			"normal.ts"
+			"normal.ts",
 		]);
 	});
 

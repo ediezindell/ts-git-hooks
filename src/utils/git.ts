@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { lstat, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
+import { lstat, mkdir, readdir, rename, rm } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { logger } from "./logger";
 import { parseNullSeparatedBuffer } from "./string";
