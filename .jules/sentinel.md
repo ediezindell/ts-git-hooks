@@ -7,3 +7,8 @@
 **Vulnerability:** Script names from `package.json` were directly interpolated into a generated `.d.ts` file. A script named `"; console.log('exploited');//` could result in syntax breakage or code execution when the file is analyzed or imported.
 **Learning:** Even "metadata" like script names from `package.json` should be treated as untrusted input when used to generate code or type definitions.
 **Prevention:** Use `JSON.stringify()` to safely escape strings that will be used as string literals in generated JavaScript or TypeScript files.
+
+## 2025-05-17 - Command Injection and Path Traversal via Git Hook Names
+**Vulnerability:** Git hook names (derived from configuration keys) were used directly as filenames for hook installation and interpolated into shell scripts. Malicious keys like `pre-commit; touch exploited` or `../../../malicious-file` could lead to command execution or path traversal.
+**Learning:** Configuration keys are untrusted input, even if they are expected to match a specific type (like `GitHook`). Validation must occur at runtime before using these keys in security-sensitive operations like filesystem access or shell script generation.
+**Prevention:** Validate hook names against a strict allowlist or a safe regex (e.g., `/^[a-z0-9-]+$/`) before using them in file operations or shell scripts.

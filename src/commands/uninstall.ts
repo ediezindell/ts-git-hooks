@@ -26,6 +26,12 @@ export async function uninstall() {
 	const results = await Promise.all(
 		configuredHooks.map(async (hookName) => {
 			const kebabCaseHookName = toKebabCase(hookName);
+
+			// Security check: only allow valid hook names to prevent path traversal
+			if (!/^[a-z0-9-]+$/.test(kebabCaseHookName)) {
+				return null;
+			}
+
 			const hookPath = path.join(gitHooksDir, kebabCaseHookName);
 
 			if (!(await fileExists(hookPath))) {

@@ -198,4 +198,17 @@ fi`;
 			expect.stringContaining(errorMessage),
 		);
 	});
+
+	it("should skip invalid hook names for security", async () => {
+		// Arrange
+		vi.mocked(loadConfig).mockResolvedValue({
+			"pre-commit; touch exploited": { run: ["lint"] },
+		} as any);
+
+		// Act
+		await install();
+
+		// Assert
+		expect(fs.writeFile).not.toHaveBeenCalled();
+	});
 });
