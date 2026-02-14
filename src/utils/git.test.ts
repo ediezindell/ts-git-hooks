@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
+import { lstat, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	addFiles,
@@ -335,8 +335,12 @@ describe("restoreFiles", () => {
 			return Promise.resolve([]);
 		});
 
-		// Mock stat for destination check
+		// Mock stat and lstat for destination check
 		vi.mocked(stat).mockImplementation((_path) => {
+			// Assume destination doesn't exist by default
+			return Promise.reject(new Error("ENOENT"));
+		});
+		vi.mocked(lstat).mockImplementation((_path) => {
 			// Assume destination doesn't exist by default
 			return Promise.reject(new Error("ENOENT"));
 		});
@@ -372,6 +376,13 @@ describe("restoreFiles", () => {
 			}
 			return Promise.reject(new Error("ENOENT"));
 		});
+		vi.mocked(lstat).mockImplementation((path) => {
+			const pathStr = path.toString();
+			if (pathStr === "dir1") {
+				return Promise.resolve({ isDirectory: () => true } as any);
+			}
+			return Promise.reject(new Error("ENOENT"));
+		});
 
 		await restoreFiles("backup");
 
@@ -380,6 +391,57 @@ describe("restoreFiles", () => {
 			"dir1/subfile.txt",
 		);
 		expect(rm).toHaveBeenCalledWith("backup", { recursive: true, force: true });
+	});
+
+	it("should NOT follow symlinks and should throw a conflict instead", async () => {
+		// Scenario:
+		// 1. Backup contains a directory 'my_dir' with a file 'secret.txt'.
+		// 2. In the working directory, 'my_dir' is a symlink to '/etc'.
+
+		vi.mocked(readdir).mockImplementation((path, _options) => {
+			const pathStr = path.toString();
+			if (pathStr === "backup") {
+				return Promise.resolve([
+					{ name: "my_dir", isDirectory: () => true },
+				] as any);
+			}
+			if (pathStr === "backup/my_dir") {
+				return Promise.resolve([
+					{ name: "secret.txt", isDirectory: () => false },
+				] as any);
+			}
+			return Promise.resolve([]);
+		});
+
+		// Mock lstat to correctly identify it as a symlink (isDirectory() returns false for lstat on symlink)
+		vi.mocked(lstat).mockImplementation((path) => {
+			const pathStr = path.toString();
+			if (pathStr === "my_dir") {
+				return Promise.resolve({
+					isDirectory: () => false,
+					isSymbolicLink: () => true
+				} as any);
+			}
+			return Promise.reject(new Error("ENOENT"));
+		});
+
+		// Even if stat() would have returned isDirectory: true, restoreFiles now uses lstat()
+		vi.mocked(stat).mockImplementation((path) => {
+			const pathStr = path.toString();
+			if (pathStr === "my_dir") {
+				return Promise.resolve({ isDirectory: () => true } as any);
+			}
+			return Promise.reject(new Error("ENOENT"));
+		});
+
+		// It should throw an error instead of following the symlink
+		await expect(restoreFiles("backup")).rejects.toThrow(
+			'Conflict: Cannot restore directory to "my_dir" because a file already exists.'
+		);
+
+		const readdirCalls = vi.mocked(readdir).mock.calls.map(call => call[0].toString());
+		expect(readdirCalls).not.toContain("backup/my_dir");
+		expect(rename).not.toHaveBeenCalledWith("backup/my_dir/secret.txt", "my_dir/secret.txt");
 	});
 });
 
@@ -393,8 +455,23 @@ describe("addFiles", () => {
 		await addFiles(["file1.txt", "file2.txt"]);
 		expect(spawn).toHaveBeenCalledWith("git", [
 			"add",
+			"--",
 			"file1.txt",
 			"file2.txt",
+		]);
+	});
+
+	it("should use -- to separate options from filenames to prevent injection", async () => {
+		mockSpawn("");
+		const files = ["-f", "--version", "normal.ts"];
+		await addFiles(files);
+
+		expect(spawn).toHaveBeenCalledWith("git", [
+			"add",
+			"--",
+			"-f",
+			"--version",
+			"normal.ts"
 		]);
 	});
 
@@ -404,6 +481,7 @@ describe("addFiles", () => {
 		expect(spawn).toHaveBeenCalledWith("git", [
 			"add",
 			"-f",
+			"--",
 			"file1.txt",
 			"file2.txt",
 		]);
@@ -422,6 +500,6 @@ describe("addFiles", () => {
 	it("should not add force flag when force is false", async () => {
 		mockSpawn("");
 		await addFiles(["file1.txt"], false);
-		expect(spawn).toHaveBeenCalledWith("git", ["add", "file1.txt"]);
+		expect(spawn).toHaveBeenCalledWith("git", ["add", "--", "file1.txt"]);
 	});
 });

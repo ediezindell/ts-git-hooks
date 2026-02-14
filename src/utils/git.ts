@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
+import { lstat, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { logger } from "./logger";
 import { parseNullSeparatedBuffer } from "./string";
@@ -167,7 +167,8 @@ export async function addFiles(files: string[], force = false): Promise<void> {
 	if (force) {
 		args.push("-f");
 	}
-	args.push(...files);
+	// Security: Use -- to separate options from file paths to prevent argument injection.
+	args.push("--", ...files);
 	await execGit(args);
 }
 
@@ -244,7 +245,10 @@ export async function restoreFiles(backupDir: string): Promise<void> {
 				const relativePath = relative(backupDir, src);
 				const dest = relativePath; // Relative to current working directory
 
-				const destStat = await stat(dest).catch(() => null);
+				// Security: Use lstat instead of stat to avoid following symlinks.
+				// This prevents an attacker from creating a symlink to a sensitive directory
+				// and having the restore process traverse into it.
+				const destStat = await lstat(dest).catch(() => null);
 
 				if (entry.isDirectory()) {
 					if (destStat?.isDirectory()) {
