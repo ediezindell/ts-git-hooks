@@ -106,32 +106,66 @@ export async function getStagedFiles(): Promise<string[]> {
 }
 
 /**
- * Stashes unstaged changes in tracked files but keeps the index.
- * It also checks if a stash was actually created.
- * @returns A promise that resolves to true if a stash was created, false otherwise.
+ * Creates a stash object without updating refs/stash, keeping the user's stash history clean.
+ * Simulates --keep-index: the index is preserved, and the working tree is restored to match it.
+ * Untracked files are handled separately by physical evacuation.
+ * @returns The stash commit hash if changes were stashed, or null if there was nothing to stash.
  */
-export async function stashPushKeepIndex(): Promise<boolean> {
-	// Hybrid Stashing: We ONLY stash tracked changes.
-	// Untracked files are handled separately by physical evacuation.
-	const stdout = await execGit(["stash", "push", "--keep-index"]);
-	// Git outputs "No local changes to save" when no stash is created
-	const noChangesMessage = "No local changes to save";
-	return !stdout.includes(noChangesMessage);
+export async function stashCreate(): Promise<string | null> {
+	const hash = (await execGit(["stash", "create"])).trim();
+	if (!hash) return null;
+	// Restore working tree to match the index (removes unstaged tracked changes)
+	await execGit(["checkout-index", "-f", "-a"]);
+	return hash;
 }
 
 /**
- * Pops the latest stash from the stash stack.
- * Throws an error if the stash pop fails (e.g., due to conflicts).
+ * Applies a stash by its commit hash.
+ * Throws an error if the stash apply fails (e.g., due to conflicts).
+ * @param hash The stash commit hash to apply.
  */
-export async function stashPop(): Promise<void> {
-	try {
-		await execGit(["stash", "pop"]);
-	} catch (error) {
-		logger.error(
-			"Error popping stash. This may be due to a conflict. Please resolve it manually.",
-		);
-		throw error;
+export async function stashApply(hash: string): Promise<void> {
+	await execGit(["stash", "apply", hash]);
+}
+
+/**
+ * Saves the current index state as a Git tree object.
+ * Call this before stashing to enable full rollback on stash apply failure.
+ * @returns The tree object hash representing the current staged state.
+ */
+export async function saveIndexState(): Promise<string> {
+	return (await execGit(["write-tree"])).trim();
+}
+
+/**
+ * Rolls back the working directory and index to the state before the pre-commit hook ran.
+ * Called when stash apply fails (e.g., due to conflicts with formatter changes).
+ *
+ * After rollback:
+ *   - Index contains the original staged changes
+ *   - Working tree reflects only the staged changes
+ *   - Unstaged changes remain accessible via git stash (promoted to refs/stash if stashHash is provided)
+ *
+ * @param origIndexTree The tree hash saved before the hook ran (via saveIndexState).
+ * @param stashHash If provided, promotes the dangling stash object to refs/stash for user recovery.
+ */
+export async function rollbackToPreCommitState(
+	origIndexTree: string,
+	stashHash?: string,
+): Promise<void> {
+	if (stashHash) {
+		// Promote the internal stash object to refs/stash so the user can see it
+		// with `git stash list` and recover with `git stash pop`
+		await execGit(["update-ref", "refs/stash", stashHash]);
 	}
+	// Reset index to HEAD, clearing any conflict/merge state from the failed stash apply
+	await execGit(["reset", "HEAD"]);
+	// Restore working tree from the (now-HEAD) index, clearing any conflict markers
+	await execGit(["checkout", "--", "."]);
+	// Restore the index to the original staged state
+	await execGit(["read-tree", origIndexTree]);
+	// Update working tree to reflect the restored staged index
+	await execGit(["checkout-index", "-f", "-a"]);
 }
 
 /**

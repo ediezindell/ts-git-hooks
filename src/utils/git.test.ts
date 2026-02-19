@@ -11,7 +11,7 @@ import {
 	getUntrackedFiles,
 	hasUnstagedChanges,
 	restoreFiles,
-	stashPushKeepIndex,
+	stashCreate,
 } from "./git";
 
 vi.mock("node:fs/promises");
@@ -137,26 +137,48 @@ describe("getChangedFiles", () => {
 	});
 });
 
-describe("stashPushKeepIndex", () => {
+describe("stashCreate", () => {
 	afterEach(() => {
 		vi.resetAllMocks();
 	});
 
-	it("should call git stash push --keep-index and return true if stash created", async () => {
-		mockSpawn("Saved working directory and index state WIP on main");
-		const created = await stashPushKeepIndex();
-		expect(spawn).toHaveBeenCalledWith("git", [
-			"stash",
-			"push",
-			"--keep-index",
+	it("should call git stash create and return the hash if changes exist", async () => {
+		const hash = "abc1234def5678";
+		// First spawn: git stash create → returns hash
+		// Second spawn: git checkout-index -f -a → returns ""
+		(spawn as unknown as ReturnType<typeof vi.fn>)
+			.mockImplementationOnce(() => {
+				const child: any = new EventEmitter();
+				child.stdout = new EventEmitter();
+				child.stderr = new EventEmitter();
+				setTimeout(() => {
+					child.stdout.emit("data", Buffer.from(hash));
+					child.emit("close", 0);
+				}, 0);
+				return child;
+			})
+			.mockImplementationOnce(() => {
+				const child: any = new EventEmitter();
+				child.stdout = new EventEmitter();
+				child.stderr = new EventEmitter();
+				setTimeout(() => child.emit("close", 0), 0);
+				return child;
+			});
+		const result = await stashCreate();
+		expect(spawn).toHaveBeenNthCalledWith(1, "git", ["stash", "create"]);
+		expect(spawn).toHaveBeenNthCalledWith(2, "git", [
+			"checkout-index",
+			"-f",
+			"-a",
 		]);
-		expect(created).toBe(true);
+		expect(result).toBe(hash);
 	});
 
-	it("should return false if no changes to save", async () => {
-		mockSpawn("No local changes to save");
-		const created = await stashPushKeepIndex();
-		expect(created).toBe(false);
+	it("should return null if there are no changes to stash", async () => {
+		mockSpawn("");
+		const result = await stashCreate();
+		expect(spawn).toHaveBeenCalledWith("git", ["stash", "create"]);
+		expect(result).toBeNull();
 	});
 });
 

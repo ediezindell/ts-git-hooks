@@ -19,8 +19,10 @@ import {
 	getGitStatus,
 	getStagedFiles,
 	restoreFiles,
-	stashPop,
-	stashPushKeepIndex,
+	rollbackToPreCommitState,
+	saveIndexState,
+	stashApply,
+	stashCreate,
 } from "../utils/git";
 import { logger } from "../utils/logger";
 import { getPackageManager } from "../utils/packageManager";
@@ -377,35 +379,109 @@ const hooksSkippingStash: Set<string> = new Set([
 
 /**
  * Safely restores stash and evacuated files with specified error handling strategy.
+ *
+ * On hook failure: always rolls back index/working tree to origIndexTree first (undoing any
+ * partial linter changes even when there were no unstaged changes), then applies the stash.
+ *
+ * On hook success: applies stash directly; if that conflicts, rolls back to origIndexTree
+ * and retries. Either way, the working directory is restored to the pre-commit state.
+ *
  * @param options Configuration for restoration behavior.
  */
 async function safeRestore(options: {
-	stashCreated: boolean;
+	stashHash: string | null;
 	evacuatedDir: string | null;
+	origIndexTree: string | null;
+	hookSucceeded: boolean;
 	silent?: boolean;
 }): Promise<void> {
-	const { stashCreated, evacuatedDir, silent = false } = options;
+	const { stashHash, evacuatedDir, origIndexTree, hookSucceeded, silent = false } = options;
 	const errors: { error: unknown; message: string }[] = [];
 
 	const tasks: Promise<void>[] = [];
 
-	// Restoration must be careful. We attempt both in parallel.
-	// We use separate try-catch blocks to ensure one failure doesn't block the other.
-
-	if (stashCreated) {
+	// Stash/rollback task — must run sequentially (rollback before stash apply when needed).
+	// Independent of evacuated-file restoration, so both tasks run in parallel.
+	const needsRollback = !hookSucceeded && origIndexTree !== null;
+	if (needsRollback || stashHash) {
 		tasks.push(
 			(async () => {
+				// Step 1: On hook failure, rollback to origIndexTree to undo any linter changes
+				// from the working tree and index — even when there are no unstaged changes.
+				if (needsRollback) {
+					try {
+						if (!silent) {
+							logger.info("Rolling back to pre-commit state...");
+						}
+						await rollbackToPreCommitState(origIndexTree as string);
+					} catch (rollbackError) {
+						errors.push({
+							error: rollbackError,
+							message:
+								"CRITICAL: Rollback to pre-commit state failed.\n" +
+								"Your working directory may be in an inconsistent state.",
+						});
+						return; // Cannot safely apply stash if rollback failed
+					}
+				}
+
+				if (!stashHash) return;
+
+				// Step 2: Apply the stash. After a failure-path rollback we are back at ORIG_TREE,
+				// so the stash (which was created from ORIG_TREE + unstaged) should apply cleanly.
 				try {
 					if (!silent) {
 						logger.info("Restoring unstaged changes from stash...");
 					}
-					await stashPop();
-				} catch (error) {
-					errors.push({
-						error,
-						message:
-							"CRITICAL: Failed to restore unstaged changes from stash. Please resolve conflicts manually using 'git stash pop'.",
-					});
+					await stashApply(stashHash);
+				} catch (firstError) {
+					// Stash apply failed. This can happen on the success path (LINT_TREE conflicts
+					// with unstaged changes). Roll back to ORIG_TREE and retry.
+					if (origIndexTree && hookSucceeded) {
+						try {
+							if (!silent) {
+								logger.info(
+									"Stash apply failed. Rolling back to pre-commit state and retrying...",
+								);
+							}
+							await rollbackToPreCommitState(origIndexTree);
+							await stashApply(stashHash);
+							// Rollback succeeded and stash was applied, but linter's staged changes
+							// are now gone. Abort the commit so the user can re-run it.
+							errors.push({
+								error: firstError,
+								message:
+									"git stash apply failed (conflicts with formatter changes).\n" +
+									"Rolled back to pre-commit state. Please re-run the commit.",
+							});
+						} catch (retryError) {
+							// Rollback succeeded but stash still cannot be applied.
+							// Promote the stash to refs/stash for manual recovery.
+							await rollbackToPreCommitState(origIndexTree, stashHash).catch(() => {});
+							errors.push({
+								error: retryError,
+								message:
+									"CRITICAL: Stash apply failed even after rollback.\n" +
+									"Rolled back to pre-commit state (staged changes only).\n" +
+									"Your unstaged changes are saved in stash@{0} — run 'git stash pop' to restore them.",
+							});
+						}
+					} else {
+						// No origIndexTree to roll back to (or already rolled back on failure path).
+						// Promote the stash to refs/stash if possible.
+						if (origIndexTree) {
+							await rollbackToPreCommitState(origIndexTree, stashHash).catch(() => {});
+						}
+						errors.push({
+							error: firstError,
+							message:
+								"CRITICAL: Failed to restore unstaged changes from stash.\n" +
+								(origIndexTree
+									? "Rolled back to pre-commit state.\n" +
+										"Your unstaged changes are saved in stash@{0} — run 'git stash pop' to restore them."
+									: "Please resolve conflicts manually using 'git stash pop'."),
+						});
+					}
 				}
 			})(),
 		);
@@ -499,13 +575,14 @@ function registerSignalHandlers(onSignal: (code: number) => void): () => void {
 
 /**
  * Performs "Hybrid Stashing": backs up untracked files physically and stashes tracked unstaged changes.
+ * Uses git stash create to avoid polluting the user's stash history (refs/stash is not updated).
  */
 async function performHybridStashing(
 	untrackedItems: string[],
 	unstagedChangesExist: boolean,
-): Promise<{ evacuatedDir: string | null; stashCreated: boolean }> {
+): Promise<{ evacuatedDir: string | null; stashHash: string | null }> {
 	let evacuatedDir: string | null = null;
-	let stashCreated = false;
+	let stashHash: string | null = null;
 	const stashTasks: Promise<void>[] = [];
 
 	// 1. Untracked Files (Physical Backup)
@@ -525,12 +602,12 @@ async function performHybridStashing(
 		);
 	}
 
-	// 2. Tracked Files (Conditional git stash)
+	// 2. Tracked Files (Conditional git stash create — does not update refs/stash)
 	if (unstagedChangesExist) {
 		stashTasks.push(
-			stashPushKeepIndex().then((created) => {
-				stashCreated = created;
-				if (stashCreated) {
+			stashCreate().then((hash) => {
+				stashHash = hash;
+				if (stashHash) {
 					logger.info("Stashed unstaged tracked changes.");
 				}
 			}),
@@ -541,7 +618,7 @@ async function performHybridStashing(
 		await Promise.all(stashTasks);
 	}
 
-	return { evacuatedDir, stashCreated };
+	return { evacuatedDir, stashHash };
 }
 
 /**
@@ -615,14 +692,16 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 		return true;
 	}
 
-	let stashCreated = false;
+	let stashHash: string | null = null;
 	let evacuatedDir: string | null = null;
+	let origIndexTree: string | null = null;
+	let hookSucceeded = false;
 	let restorationCalled = false;
 
 	const performRestoration = async (silent = false) => {
 		if (restorationCalled) return;
 		restorationCalled = true;
-		await safeRestore({ stashCreated, evacuatedDir, silent });
+		await safeRestore({ stashHash, evacuatedDir, origIndexTree, hookSucceeded, silent });
 	};
 
 	const unregister = registerSignalHandlers(async (code) => {
@@ -632,11 +711,13 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 
 	try {
 		if (needsStash) {
+			// Save index state before stashing to enable full rollback on stash apply failure
+			origIndexTree = await saveIndexState();
 			const result = await performHybridStashing(
 				untrackedItems,
 				unstagedChangesExist,
 			);
-			stashCreated = result.stashCreated;
+			stashHash = result.stashHash;
 			evacuatedDir = result.evacuatedDir;
 		}
 
@@ -661,6 +742,7 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 			}
 		}
 
+		hookSucceeded = true;
 		logger.success(`${hookName} hook passed.`);
 		return true;
 	} catch (error: unknown) {

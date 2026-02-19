@@ -11,8 +11,10 @@ import {
 	getUntrackedFiles,
 	hasUnstagedChanges,
 	restoreFiles,
-	stashPop,
-	stashPushKeepIndex,
+	rollbackToPreCommitState,
+	saveIndexState,
+	stashApply,
+	stashCreate,
 } from "../utils/git";
 import { getPackageManager } from "../utils/packageManager";
 import { loadConfig } from "./config";
@@ -63,8 +65,10 @@ const setupDefaultMocks = () => {
 		untrackedItems: [],
 		unstagedChangesExist: false,
 	});
-	vi.mocked(stashPushKeepIndex).mockResolvedValue(false);
-	vi.mocked(stashPop).mockResolvedValue(undefined);
+	vi.mocked(saveIndexState).mockResolvedValue("deadbeef");
+	vi.mocked(stashCreate).mockResolvedValue(null);
+	vi.mocked(stashApply).mockResolvedValue(undefined);
+	vi.mocked(rollbackToPreCommitState).mockResolvedValue(undefined);
 	vi.mocked(getChangedFiles).mockResolvedValue([]);
 	vi.mocked(addFiles).mockResolvedValue(undefined);
 	vi.mocked(getPackageManager).mockReturnValue("npm");
@@ -186,8 +190,8 @@ describe("Hybrid Stashing logic", () => {
 
 		await runHook("pre-commit");
 
-		expect(stashPushKeepIndex).not.toHaveBeenCalled();
-		expect(stashPop).not.toHaveBeenCalled();
+		expect(stashCreate).not.toHaveBeenCalled();
+		expect(stashApply).not.toHaveBeenCalled();
 	});
 
 	it("should perform surgical stash only if unstaged changes exist", async () => {
@@ -197,7 +201,7 @@ describe("Hybrid Stashing logic", () => {
 			untrackedItems: [],
 			unstagedChangesExist: true,
 		});
-		vi.mocked(stashPushKeepIndex).mockResolvedValue(true);
+		vi.mocked(stashCreate).mockResolvedValue("abc1234");
 		vi.mocked(spawn).mockImplementation(() => {
 			const p = new MockChildProcess();
 			simulateSuccess(p);
@@ -206,8 +210,60 @@ describe("Hybrid Stashing logic", () => {
 
 		await runHook("pre-commit");
 
-		expect(stashPushKeepIndex).toHaveBeenCalled();
-		expect(stashPop).toHaveBeenCalled();
+		expect(stashCreate).toHaveBeenCalled();
+		expect(stashApply).toHaveBeenCalledWith("abc1234");
+	});
+
+	it("should rollback to origIndexTree when hook fails (no unstaged changes)", async () => {
+		// Regression test: rollback must work even without unstaged changes.
+		// The linter may partially modify files in the working tree before failing;
+		// those changes must be cleaned up by restoring to origIndexTree.
+		vi.mocked(loadConfig).mockResolvedValue({ preCommit: { "*.ts": "lint" } });
+		vi.mocked(getGitStatus).mockResolvedValue({
+			stagedFiles: ["src/a.ts"],
+			untrackedItems: [],
+			unstagedChangesExist: false, // No unstaged changes → stashHash will be null
+		});
+		vi.mocked(saveIndexState).mockResolvedValue("deadbeef");
+		vi.mocked(stashCreate).mockResolvedValue(null); // No stash created
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateFailure(p); // Linter fails
+			return p as any;
+		});
+
+		const result = await runHook("pre-commit");
+
+		expect(result).toBe(false);
+		// Rollback must be called even though there were no unstaged changes
+		expect(rollbackToPreCommitState).toHaveBeenCalledWith("deadbeef");
+		expect(stashApply).not.toHaveBeenCalled(); // No stash to apply
+	});
+
+	it("should rollback before stash apply when hook fails with unstaged changes", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({ preCommit: { "*.ts": "lint" } });
+		vi.mocked(getGitStatus).mockResolvedValue({
+			stagedFiles: ["src/a.ts"],
+			untrackedItems: [],
+			unstagedChangesExist: true,
+		});
+		vi.mocked(saveIndexState).mockResolvedValue("deadbeef");
+		vi.mocked(stashCreate).mockResolvedValue("stashhash");
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateFailure(p); // Linter fails
+			return p as any;
+		});
+
+		await runHook("pre-commit");
+
+		// Rollback must happen BEFORE stash apply (cleaning linter changes first)
+		const rollbackCallOrder = vi
+			.mocked(rollbackToPreCommitState)
+			.mock.invocationCallOrder[0];
+		const stashApplyCallOrder =
+			vi.mocked(stashApply).mock.invocationCallOrder[0];
+		expect(rollbackCallOrder).toBeLessThan(stashApplyCallOrder);
 	});
 });
 
@@ -557,8 +613,8 @@ describe("Performance Optimizations", () => {
 		await runHook("commit-msg");
 
 		// It should NOT try to stash
-		expect(stashPushKeepIndex).not.toHaveBeenCalled();
-		expect(stashPop).not.toHaveBeenCalled();
+		expect(stashCreate).not.toHaveBeenCalled();
+		expect(stashApply).not.toHaveBeenCalled();
 	});
 
 	it("should optimize getChangedFiles call for glob hooks", async () => {
