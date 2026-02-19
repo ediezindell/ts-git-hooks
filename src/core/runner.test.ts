@@ -258,9 +258,8 @@ describe("Hybrid Stashing logic", () => {
 		await runHook("pre-commit");
 
 		// Rollback must happen BEFORE stash apply (cleaning linter changes first)
-		const rollbackCallOrder = vi
-			.mocked(rollbackToPreCommitState)
-			.mock.invocationCallOrder[0];
+		const rollbackCallOrder = vi.mocked(rollbackToPreCommitState).mock
+			.invocationCallOrder[0];
 		const stashApplyCallOrder =
 			vi.mocked(stashApply).mock.invocationCallOrder[0];
 		expect(rollbackCallOrder).toBeLessThan(stashApplyCallOrder);

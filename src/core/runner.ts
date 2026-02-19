@@ -395,7 +395,13 @@ async function safeRestore(options: {
 	hookSucceeded: boolean;
 	silent?: boolean;
 }): Promise<void> {
-	const { stashHash, evacuatedDir, origIndexTree, hookSucceeded, silent = false } = options;
+	const {
+		stashHash,
+		evacuatedDir,
+		origIndexTree,
+		hookSucceeded,
+		silent = false,
+	} = options;
 	const errors: { error: unknown; message: string }[] = [];
 
 	const tasks: Promise<void>[] = [];
@@ -457,7 +463,9 @@ async function safeRestore(options: {
 						} catch (retryError) {
 							// Rollback succeeded but stash still cannot be applied.
 							// Promote the stash to refs/stash for manual recovery.
-							await rollbackToPreCommitState(origIndexTree, stashHash).catch(() => {});
+							await rollbackToPreCommitState(origIndexTree, stashHash).catch(
+								() => {},
+							);
 							errors.push({
 								error: retryError,
 								message:
@@ -470,7 +478,9 @@ async function safeRestore(options: {
 						// No origIndexTree to roll back to (or already rolled back on failure path).
 						// Promote the stash to refs/stash if possible.
 						if (origIndexTree) {
-							await rollbackToPreCommitState(origIndexTree, stashHash).catch(() => {});
+							await rollbackToPreCommitState(origIndexTree, stashHash).catch(
+								() => {},
+							);
 						}
 						errors.push({
 							error: firstError,
@@ -701,7 +711,13 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	const performRestoration = async (silent = false) => {
 		if (restorationCalled) return;
 		restorationCalled = true;
-		await safeRestore({ stashHash, evacuatedDir, origIndexTree, hookSucceeded, silent });
+		await safeRestore({
+			stashHash,
+			evacuatedDir,
+			origIndexTree,
+			hookSucceeded,
+			silent,
+		});
 	};
 
 	const unregister = registerSignalHandlers(async (code) => {
