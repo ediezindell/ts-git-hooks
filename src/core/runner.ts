@@ -50,7 +50,10 @@ function isCommandTuple(value: unknown): value is [string, ArgsFn] {
 /**
  * Parses a command string into arguments and detects shell operators.
  */
-function parseCommandLine(cmd: string): { args: string[]; hasOperators: boolean } {
+function parseCommandLine(cmd: string): {
+	args: string[];
+	hasOperators: boolean;
+} {
 	const parsed = parse(cmd);
 	const args: string[] = [];
 	let hasOperators = false;
