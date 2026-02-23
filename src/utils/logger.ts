@@ -15,23 +15,30 @@ const ICONS = {
 const formatError = (err: unknown): string =>
 	err instanceof Error ? err.message : String(err);
 
+/**
+ * Formats a log message with prefix, optional label, and icon.
+ */
+const formatMessage = (icon: string, message: string, label?: string) => {
+	const labelPart = label ? `${pc.bold(pc.gray(`[${label}]`))} ` : "";
+	return `${PREFIX} ${labelPart}${icon} ${message}`;
+};
+
 export const logger = {
 	log: (message: string) => {
 		console.log(message);
 	},
-	info: (message: string) => {
-		console.log(`${PREFIX} ${ICONS.info}  ${message}`);
+	info: (message: string, label?: string) => {
+		console.log(formatMessage(ICONS.info, ` ${message}`, label));
 	},
-	success: (message: string) => {
-		console.log(`${PREFIX} ${ICONS.success} ${message}`);
+	success: (message: string, label?: string) => {
+		console.log(formatMessage(ICONS.success, message, label));
 	},
-	warn: (message: string) => {
-		console.log(`${PREFIX} ${ICONS.warn}  ${message}`);
+	warn: (message: string, label?: string) => {
+		console.log(formatMessage(ICONS.warn, ` ${message}`, label));
 	},
-	error: (message: unknown) => {
+	error: (message: unknown, label?: string) => {
 		const msg = formatError(message);
-
-		console.error(`${PREFIX} ${ICONS.error} ${msg}`);
+		console.error(formatMessage(ICONS.error, msg, label));
 
 		// If it's a "real" error with a stack, it might be useful for debugging if a flag is set,
 		// but for now we keep it simple to match previous behavior.
@@ -40,19 +47,9 @@ export const logger = {
 	 * Creates a scoped logger with a label.
 	 * @param label The label to use (e.g. script name).
 	 */
-	scope: (label: string) => {
-		const scopedPrefix = pc.bold(pc.gray(`[${label}]`));
-		return {
-			info: (message: string) => {
-				console.log(`${PREFIX} ${scopedPrefix} ${ICONS.info}  ${message}`);
-			},
-			success: (message: string) => {
-				console.log(`${PREFIX} ${scopedPrefix} ${ICONS.success} ${message}`);
-			},
-			error: (message: unknown) => {
-				const msg = formatError(message);
-				console.error(`${PREFIX} ${scopedPrefix} ${ICONS.error} ${msg}`);
-			},
-		};
-	},
+	scope: (label: string) => ({
+		info: (message: string) => logger.info(message, label),
+		success: (message: string) => logger.success(message, label),
+		error: (message: unknown) => logger.error(message, label),
+	}),
 };

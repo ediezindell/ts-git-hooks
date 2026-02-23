@@ -87,4 +87,4 @@
 
 ## 2026-02-14 - Runner and Git status micro-optimizations
 **Learning:** For non-glob hooks (simple hooks), bypassing the entire command grouping logic (which involves Map, Set, and getCommandKey overhead) saves measurable processing time, especially when many commands are configured. Additionally, caching micromatch results when multiple commands share the same pattern set avoids redundant O(N) matches. In evacuateFiles, caching join(backupDir, dirname(item)) results significantly reduces redundant string operations and dirname calls when many files share the same directory.
-**Action:** Implemented grouping bypass for simple hooks, micromatch result caching, and directory path caching in evacuateFiles.
+**Action:** Implemented grouping bypass for simple hooks, micromatch result caching, and directory path caching in evacuateFiles.2025-05-14: Refactored `src/utils/logger.ts` to deduplicate message formatting logic by introducing a `formatMessage` helper. This improvement makes the logger more maintainable and simplifies the `scope` implementation while strictly preserving the visual output alignment.
