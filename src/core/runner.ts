@@ -48,6 +48,29 @@ function isCommandTuple(value: unknown): value is [string, ArgsFn] {
 }
 
 /**
+ * Parses a command string into arguments and detects shell operators.
+ */
+function parseCommandLine(cmd: string): {
+	args: string[];
+	hasOperators: boolean;
+} {
+	const parsed = parse(cmd);
+	const args: string[] = [];
+	let hasOperators = false;
+
+	for (const entry of parsed) {
+		if (typeof entry === "string") {
+			args.push(entry);
+		} else {
+			hasOperators = true;
+			break;
+		}
+	}
+
+	return { args, hasOperators };
+}
+
+/**
  * Processes a command into an Executable.
  * Uses shell-quote for robust parsing and handles both string and tuple commands.
  */
@@ -59,18 +82,7 @@ function processCommand(
 	if (isCommandTuple(command)) {
 		const [script, formatArguments] = command;
 		const result = formatArguments(files, script);
-		const parsed = parse(result);
-
-		const args: string[] = [];
-		let hasOperators = false;
-		for (const entry of parsed) {
-			if (typeof entry === "string") {
-				args.push(entry);
-			} else {
-				hasOperators = true;
-				break;
-			}
-		}
+		const { args, hasOperators } = parseCommandLine(result);
 
 		if (hasOperators) {
 			// If it has shell operators, we fallback to string execution.
@@ -87,18 +99,7 @@ function processCommand(
 	}
 
 	const commandString = command as string;
-	const parsed = parse(commandString);
-
-	const args: string[] = [];
-	let hasOperators = false;
-	for (const entry of parsed) {
-		if (typeof entry === "string") {
-			args.push(entry);
-		} else {
-			hasOperators = true;
-			break;
-		}
-	}
+	const { args, hasOperators } = parseCommandLine(commandString);
 
 	// If there are shell operators, we must use shell: true.
 	// To fix the security vulnerability, we safely quote files before appending.
