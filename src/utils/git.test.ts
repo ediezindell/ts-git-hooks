@@ -1,6 +1,15 @@
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { lstat, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
+import {
+	lstat,
+	mkdir,
+	readdir,
+	readFile,
+	readlink,
+	rename,
+	rm,
+	stat,
+} from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	addFiles,
@@ -340,7 +349,7 @@ describe("restoreFiles", () => {
 	});
 
 	it("should restore files and directories from backup directory and cleanup", async () => {
-		// Mock readdir to return Dirent-like objects
+		// Mock readdir
 		vi.mocked(readdir).mockImplementation((path, _options) => {
 			const pathStr = path.toString();
 			if (pathStr === "backup") {
@@ -357,117 +366,132 @@ describe("restoreFiles", () => {
 			return Promise.resolve([]);
 		});
 
-		// Mock stat and lstat for destination check
-		vi.mocked(stat).mockImplementation((_path) => {
-			// Assume destination doesn't exist by default
-			return Promise.reject(new Error("ENOENT"));
-		});
-		vi.mocked(lstat).mockImplementation((_path) => {
-			// Assume destination doesn't exist by default
-			return Promise.reject(new Error("ENOENT"));
-		});
+		// Mock lstat for destination checks (not existing)
+		vi.mocked(lstat).mockImplementation((_path) =>
+			Promise.reject(new Error("ENOENT")),
+		);
 
 		await restoreFiles("backup");
 
-		expect(rename).toHaveBeenCalledWith("backup/file1.txt", "file1.txt");
-		// In the new implementation, if destination dir doesn't exist, it moves the whole directory
-		expect(rename).toHaveBeenCalledWith("backup/dir1", "dir1");
+		expect(rename).toHaveBeenCalledWith("backup/file1.txt", "./file1.txt");
+		expect(rename).toHaveBeenCalledWith("backup/dir1", "./dir1");
 		expect(rm).toHaveBeenCalledWith("backup", { recursive: true, force: true });
 	});
 
-	it("should merge directories if destination already exists", async () => {
-		vi.mocked(readdir).mockImplementation((path, _options) => {
-			const pathStr = path.toString();
-			if (pathStr === "backup") {
-				return Promise.resolve([
-					{ name: "dir1", isDirectory: () => true },
-				] as any);
-			}
-			if (pathStr === "backup/dir1") {
-				return Promise.resolve([
-					{ name: "subfile.txt", isDirectory: () => false },
-				] as any);
-			}
-			return Promise.resolve([]);
-		});
+	it("should skip overwriting if file exists and content is identical", async () => {
+		// Scenario: restore 'file1.txt' but it already exists with SAME content
+		vi.mocked(readdir).mockResolvedValue([
+			{ name: "file1.txt", isDirectory: () => false } as any,
+		]);
 
-		vi.mocked(stat).mockImplementation((path) => {
-			const pathStr = path.toString();
-			if (pathStr === "dir1") {
-				return Promise.resolve({ isDirectory: () => true } as any);
-			}
-			return Promise.reject(new Error("ENOENT"));
-		});
-		vi.mocked(lstat).mockImplementation((path) => {
-			const pathStr = path.toString();
-			if (pathStr === "dir1") {
-				return Promise.resolve({ isDirectory: () => true } as any);
-			}
-			return Promise.reject(new Error("ENOENT"));
-		});
+		// Both exist
+		vi.mocked(lstat).mockResolvedValue({
+			isDirectory: () => false,
+			isSymbolicLink: () => false,
+			isFile: () => true,
+			size: 100,
+		} as any);
+
+		// Identical content
+		vi.mocked(readFile).mockResolvedValue(Buffer.from("same content"));
 
 		await restoreFiles("backup");
 
-		expect(rename).toHaveBeenCalledWith(
-			"backup/dir1/subfile.txt",
-			"dir1/subfile.txt",
-		);
-		expect(rm).toHaveBeenCalledWith("backup", { recursive: true, force: true });
-	});
+		// Should verify identical content
+		expect(readFile).toHaveBeenCalledTimes(2); // One for src, one for dest
 
-	it("should NOT follow symlinks and should throw a conflict instead", async () => {
-		// Scenario:
-		// 1. Backup contains a directory 'my_dir' with a file 'secret.txt'.
-		// 2. In the working directory, 'my_dir' is a symlink to '/etc'.
-
-		vi.mocked(readdir).mockImplementation((path, _options) => {
-			const pathStr = path.toString();
-			if (pathStr === "backup") {
-				return Promise.resolve([
-					{ name: "my_dir", isDirectory: () => true },
-				] as any);
-			}
-			if (pathStr === "backup/my_dir") {
-				return Promise.resolve([
-					{ name: "secret.txt", isDirectory: () => false },
-				] as any);
-			}
-			return Promise.resolve([]);
-		});
-
-		// Mock lstat to correctly identify it as a symlink (isDirectory() returns false for lstat on symlink)
-		vi.mocked(lstat).mockImplementation((path) => {
-			const pathStr = path.toString();
-			if (pathStr === "my_dir") {
-				return Promise.resolve({
-					isDirectory: () => false,
-					isSymbolicLink: () => true,
-				} as any);
-			}
-			return Promise.reject(new Error("ENOENT"));
-		});
-
-		// Even if stat() would have returned isDirectory: true, restoreFiles now uses lstat()
-		vi.mocked(stat).mockImplementation((path) => {
-			const pathStr = path.toString();
-			if (pathStr === "my_dir") {
-				return Promise.resolve({ isDirectory: () => true } as any);
-			}
-			return Promise.reject(new Error("ENOENT"));
-		});
-
-		// It should throw an error instead of following the symlink
-		await expect(restoreFiles("backup")).rejects.toThrow(
-			'Conflict: Cannot restore directory to "my_dir" because a file already exists.',
-		);
-
-		const readdirCalls = vi
-			.mocked(readdir)
-			.mock.calls.map((call) => call[0].toString());
-		expect(readdirCalls).not.toContain("backup/my_dir");
+		// Should NOT rename src to dest
+		expect(rename).not.toHaveBeenCalledWith("backup/file1.txt", "./file1.txt");
+		// Should NOT backup
 		expect(rename).not.toHaveBeenCalledWith(
-			"backup/my_dir/secret.txt",
-			"my_dir/secret.txt",
+			"backup/file1.txt",
+			"./file1.txt.backup",
+		);
+		// Should still cleanup backup dir
+		expect(rm).toHaveBeenCalledWith("backup", { recursive: true, force: true });
+	});
+
+	it("should create a backup file if destination exists and content differs", async () => {
+		// Scenario: restore 'file1.txt' but it exists with DIFFERENT content
+		vi.mocked(readdir).mockResolvedValue([
+			{ name: "file1.txt", isDirectory: () => false } as any,
+		]);
+
+		// Both exist
+		vi.mocked(lstat).mockResolvedValue({
+			isDirectory: () => false,
+			isSymbolicLink: () => false,
+			isFile: () => true,
+			size: 100,
+		} as any);
+
+		// Different content
+		vi.mocked(readFile)
+			.mockResolvedValueOnce(Buffer.from("backup content"))
+			.mockResolvedValueOnce(Buffer.from("worktree content"));
+
+		await restoreFiles("backup");
+
+		// Should rename src to .backup
+		expect(rename).toHaveBeenCalledWith(
+			"backup/file1.txt",
+			"./file1.txt.backup",
+		);
+		// Should NOT overwrite original
+		expect(rename).not.toHaveBeenCalledWith("backup/file1.txt", "./file1.txt");
+	});
+
+	it("should detect conflict if destination is symlink and src is file", async () => {
+		vi.mocked(readdir).mockResolvedValue([
+			{ name: "link.txt", isDirectory: () => false } as any,
+		]);
+
+		// Dest is symlink, Src is file
+		vi.mocked(lstat)
+			// lstat call for dest (first call)
+			.mockResolvedValueOnce({
+				isDirectory: () => false,
+				isSymbolicLink: () => true, // Dest is symlink
+				isFile: () => false,
+			} as any)
+			// lstat call for src (inside areFilesIdentical helper)
+			.mockResolvedValueOnce({
+				isDirectory: () => false,
+				isSymbolicLink: () => false, // Src is file
+				isFile: () => true,
+			} as any);
+
+		await restoreFiles("backup");
+
+		// Types differ -> Considered NOT identical -> Should backup
+		expect(rename).toHaveBeenCalledWith(
+			"backup/link.txt",
+			"./link.txt.backup",
+		);
+	});
+
+	it("should skip overwriting if both are symlinks to same target", async () => {
+		vi.mocked(readdir).mockResolvedValue([
+			{ name: "link.txt", isDirectory: () => false } as any,
+		]);
+
+		// Both are symlinks
+		vi.mocked(lstat).mockResolvedValue({
+			isDirectory: () => false,
+			isSymbolicLink: () => true,
+			isFile: () => false,
+		} as any);
+
+		// Same target
+		vi.mocked(readlink).mockResolvedValue("/target/path");
+
+		await restoreFiles("backup");
+
+		expect(readlink).toHaveBeenCalledTimes(2);
+		expect(rename).not.toHaveBeenCalledWith("backup/link.txt", "./link.txt");
+		expect(rename).not.toHaveBeenCalledWith(
+			"backup/link.txt",
+			"./link.txt.backup",
 		);
 	});
 });
