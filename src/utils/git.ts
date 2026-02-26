@@ -7,7 +7,6 @@ import {
 	readlink,
 	rename,
 	rm,
-	stat,
 } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { logger } from "./logger";

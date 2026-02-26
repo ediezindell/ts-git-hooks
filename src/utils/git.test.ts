@@ -8,7 +8,6 @@ import {
 	readlink,
 	rename,
 	rm,
-	stat,
 } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -464,10 +463,7 @@ describe("restoreFiles", () => {
 		await restoreFiles("backup");
 
 		// Types differ -> Considered NOT identical -> Should backup
-		expect(rename).toHaveBeenCalledWith(
-			"backup/link.txt",
-			"./link.txt.backup",
-		);
+		expect(rename).toHaveBeenCalledWith("backup/link.txt", "./link.txt.backup");
 	});
 
 	it("should skip overwriting if both are symlinks to same target", async () => {
