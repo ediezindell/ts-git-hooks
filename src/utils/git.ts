@@ -1,5 +1,13 @@
 import { spawn } from "node:child_process";
-import { lstat, mkdir, readdir, rename, rm } from "node:fs/promises";
+import {
+	lstat,
+	mkdir,
+	readdir,
+	readFile,
+	readlink,
+	rename,
+	rm,
+} from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { logger } from "./logger";
 import { parseNullSeparatedBuffer } from "./string";
@@ -248,16 +256,62 @@ export async function evacuateFiles(
 }
 
 /**
+ * Helper to check if two files are identical in content.
+ */
+async function areFilesIdentical(
+	pathA: string,
+	pathB: string,
+): Promise<boolean> {
+	try {
+		const [statA, statB] = await Promise.all([lstat(pathA), lstat(pathB)]);
+
+		// Compare file types
+		if (statA.isSymbolicLink() !== statB.isSymbolicLink()) return false;
+		if (statA.isDirectory() !== statB.isDirectory()) return false;
+		if (statA.isFile() !== statB.isFile()) return false;
+
+		// If symlinks, compare targets
+		if (statA.isSymbolicLink()) {
+			const [linkA, linkB] = await Promise.all([
+				readlink(pathA),
+				readlink(pathB),
+			]);
+			return linkA === linkB;
+		}
+
+		// If directories, we can't easily compare equality (and restoreFiles merges directories anyway).
+		// We treat directories as "not identical" to proceed with merge logic, or "identical" to skip?
+		// restoreFiles handles directory merging recursively, so this helper is likely called for files.
+		if (statA.isDirectory()) return false;
+
+		// Compare sizes
+		if (statA.size !== statB.size) return false;
+
+		// Compare content
+		const [bufA, bufB] = await Promise.all([readFile(pathA), readFile(pathB)]);
+		return bufA.equals(bufB);
+	} catch {
+		return false;
+	}
+}
+
+/**
  * Restores files and directories from a backup directory back to the working directory.
  * This uses a recursive merge-move strategy to handle existing directories.
+ * Adds safety checks to prevent overwriting modified files in the working directory.
+ *
  * @param backupDir Source backup directory.
+ * @param targetDir Target directory (defaults to current working directory).
  */
-export async function restoreFiles(backupDir: string): Promise<void> {
+export async function restoreFiles(
+	backupDir: string,
+	targetDir = ".",
+): Promise<void> {
 	// Optimization: Cache mkdir promises to avoid race conditions and redundant calls during parallel execution.
 	const mkdirCache = new Map<string, Promise<void>>();
 
 	const ensureDir = (dir: string): Promise<void> => {
-		if (dir === ".") return Promise.resolve();
+		if (dir === "." || dir === "") return Promise.resolve();
 
 		const cached = mkdirCache.get(dir);
 		if (cached) return cached;
@@ -277,7 +331,7 @@ export async function restoreFiles(backupDir: string): Promise<void> {
 			entries.map(async (entry) => {
 				const src = join(currentDir, entry.name);
 				const relativePath = relative(backupDir, src);
-				const dest = relativePath; // Relative to current working directory
+				const dest = join(targetDir, relativePath);
 
 				// Security: Use lstat instead of stat to avoid following symlinks.
 				// This prevents an attacker from creating a symlink to a sensitive directory
@@ -299,13 +353,35 @@ export async function restoreFiles(backupDir: string): Promise<void> {
 						await rename(src, dest);
 					}
 				} else {
-					// It's a file
+					// It's a file (or symlink)
 					if (destStat?.isDirectory()) {
 						throw new Error(
 							`Conflict: Cannot restore file to "${dest}" because a directory already exists.`,
 						);
 					}
-					// Move the file, potentially overwriting if it was a file (not recommended, but better than dropping)
+
+					if (destStat) {
+						// Destination exists. Check if it's identical to the backup.
+						const identical = await areFilesIdentical(src, dest);
+						if (identical) {
+							// Identical: No need to restore (backup will be deleted).
+							// We can just skip.
+							return;
+						}
+
+						// Conflict: File exists and is different.
+						// Save backup to a conflict file instead of overwriting.
+						const backupDest = `${dest}.backup`;
+						logger.warn(
+							`Conflict: File "${dest}" already exists and differs from backup.\n` +
+								`Restoring backup to "${backupDest}" to avoid overwriting your changes.`,
+						);
+						await ensureDir(dirname(backupDest));
+						await rename(src, backupDest);
+						return;
+					}
+
+					// Move the file
 					await ensureDir(dirname(dest));
 					await rename(src, dest);
 				}
@@ -316,7 +392,7 @@ export async function restoreFiles(backupDir: string): Promise<void> {
 	// Start restoration
 	await walk(backupDir);
 
-	// Only clean up if we successfully moved EVERYTHING
+	// Only clean up if we successfully moved EVERYTHING (or handled collisions)
 	await rm(backupDir, { recursive: true, force: true });
 }
 
