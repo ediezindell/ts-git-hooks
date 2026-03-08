@@ -12,6 +12,7 @@
 		"lint": "biome lint .",
 		"format": "biome format --write src",
 		"check": "biome check --write src",
+		"prebuild": "rm -rf dist",
 		"build": "rolldown -c rolldown.config.mjs && tsgo --emitDeclarationOnly --declaration --outDir dist",
 		"typecheck": "tsgo --noEmit",
 		"prepare": "npm run build",
@@ -21,8 +22,8 @@
 		"type": "git",
 		"url": "git+https://github.com/ediezindell/ts-git-hooks.git"
 	},
-	"keywords": [],
-	"author": "",
+	"keywords": ["git-hooks", "git", "hooks", "typescript", "type-safe"],
+	"author": "ediezindell",
 	"license": "MIT",
 	"bugs": {
 		"url": "https://github.com/ediezindell/ts-git-hooks/issues"
@@ -30,7 +31,8 @@
 	"homepage": "https://github.com/ediezindell/ts-git-hooks#readme",
 	"files": [
 		"dist",
-		"README.md"
+		"README.md",
+		"LICENSE"
 	],
 	"engines": {
 		"node": ">=22.6.0"
