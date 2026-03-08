@@ -22,7 +22,13 @@
 		"type": "git",
 		"url": "git+https://github.com/ediezindell/ts-git-hooks.git"
 	},
-	"keywords": ["git-hooks", "git", "hooks", "typescript", "type-safe"],
+	"keywords": [
+		"git-hooks",
+		"git",
+		"hooks",
+		"typescript",
+		"type-safe"
+	],
 	"author": "ediezindell",
 	"license": "MIT",
 	"bugs": {
