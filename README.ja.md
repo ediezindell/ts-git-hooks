@@ -73,6 +73,10 @@ export const config: TSGitHookConfig<Scripts> = {
 };
 ```
 
+> **なぜ glob ベースの指定は `pre-commit` 限定なのか？**
+>
+> `pre-commit` は、Git の hook の中で「変更対象ファイル」が単一の正典（`git diff --cached --name-only` でとれる staged file 集合）として定まっている唯一の hook です。他の hook は、ファイルリスト的な文脈を持たない（`commit-msg` / `pre-rebase` / `pre-auto-gc`）か、ref ペア（`post-checkout` / `post-merge` / `post-rewrite` / `pre-push`）から「何を変更とみなすか」をプロジェクト側で定義する必要があります。`ts-git-hooks` はデフォルトを勝手に決めて user を驚かせるのを避けるため、ファイルリストが曖昧でない `pre-commit` でのみ glob 指定を有効にしています。他の hook でプロジェクト全体に対するツールを動かす場合は、下のシンプルスクリプト形式を使ってください。
+
 ### 2. シンプルなフック (例: `pre-push`, `commit-msg`)
 
 特定のファイルではなくプロジェクト全体に対してタスクを実行するフックの場合、スクリプト名、またはスクリプト名の配列を指定できます。これらのスクリプトは並列に実行されます。

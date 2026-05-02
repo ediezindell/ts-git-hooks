@@ -76,6 +76,10 @@ export const config: TSGitHookConfig<Scripts> = {
 };
 ```
 
+> **Why is glob-based targeting limited to `pre-commit`?**
+>
+> `pre-commit` is the only Git hook where the changed-file context is a single, canonical list — the staged file set (`git diff --cached --name-only`). Other hooks either have no natural file-list context (`commit-msg`, `pre-rebase`, `pre-auto-gc`), or expose ref pairs from which "changed files" must be derived by the project's own definition (`post-checkout`, `post-merge`, `post-rewrite`, `pre-push`). Rather than pick a default and surprise users, `ts-git-hooks` only enables glob targeting where the file list is unambiguous. For project-wide tools on other hooks, use the simple-script form below.
+
 ### 2. Simple Hooks (e.g., `pre-push`, `commit-msg`)
 
 For hooks that run a task for the entire project, rather than specific files, you can provide a script or an array of scripts. These scripts will be run in parallel.
