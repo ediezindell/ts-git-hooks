@@ -137,6 +137,24 @@ export async function stashApply(hash: string): Promise<void> {
 }
 
 /**
+ * Hard-resets the index and working tree to match the given tree-ish.
+ * Does not move HEAD. Untracked files are preserved.
+ * Used by the formatter-replay flow to restore the pre-lint working tree state.
+ */
+export async function resetToTree(treeIsh: string): Promise<void> {
+	await execGit(["read-tree", "--reset", "-u", treeIsh]);
+}
+
+/**
+ * Replaces the index with the given tree-ish, leaving the working tree untouched.
+ * Used by the formatter-replay flow to restore the lint result into the index after
+ * the working tree has been re-formatted with unstaged changes included.
+ */
+export async function setIndexFromTree(treeIsh: string): Promise<void> {
+	await execGit(["read-tree", "--reset", treeIsh]);
+}
+
+/**
  * Saves the current index state as a Git tree object.
  * Call this before stashing to enable full rollback on stash apply failure.
  * @returns The tree object hash representing the current staged state.

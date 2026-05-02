@@ -73,6 +73,21 @@ export interface HookOptions {
 	 * @default false
 	 */
 	sequential?: boolean;
+	/**
+	 * Re-run pre-commit scripts on the unstaged-inclusive working tree state to avoid
+	 * stash-apply conflicts after formatters modify staged files.
+	 *
+	 * When enabled, after the first run formats the staged content, the working tree is
+	 * reset to the original (staged + unstaged) state and the same scripts run again.
+	 * The index keeps the first-run result; the working tree gets the second-run result.
+	 * This sidesteps the 3-way merge done by `git stash apply`, at the cost of running
+	 * scripts twice when both unstaged changes and formatter modifications exist.
+	 *
+	 * Only takes effect for `pre-commit`.
+	 *
+	 * @default false
+	 */
+	replayFormatter?: boolean;
 }
 
 /**

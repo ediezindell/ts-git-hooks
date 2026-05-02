@@ -18,9 +18,11 @@ import {
 	getChangedFiles,
 	getGitStatus,
 	getStagedFiles,
+	resetToTree,
 	restoreFiles,
 	rollbackToPreCommitState,
 	saveIndexState,
+	setIndexFromTree,
 	stashApply,
 	stashCreate,
 } from "../utils/git";
@@ -742,13 +744,17 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 			`Running scripts for ${hookName} (${isSequential ? "sequentially" : "in parallel"})...`,
 		);
 
-		if (isSequential) {
-			for (const script of finalScripts) {
-				await executeScript(script);
+		const runAllScripts = async () => {
+			if (isSequential) {
+				for (const script of finalScripts) {
+					await executeScript(script);
+				}
+			} else {
+				await Promise.all(finalScripts.map((script) => executeScript(script)));
 			}
-		} else {
-			await Promise.all(finalScripts.map((script) => executeScript(script)));
-		}
+		};
+
+		await runAllScripts();
 
 		// For pre-commit, stage any changes made by the scripts
 		if (hookName === "pre-commit") {
@@ -756,6 +762,23 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 			if (changedFiles.length > 0) {
 				logger.info("Adding modified files to the index...");
 				await addFiles(changedFiles, true);
+
+				// Formatter replay: re-run scripts on the original (staged + unstaged)
+				// working tree so the unstaged changes carry the same formatter output as
+				// the staged ones. This avoids the 3-way merge done by `git stash apply`,
+				// which conflicts whenever formatter changes overlap with unstaged hunks.
+				if (config.replayFormatter && stashHash) {
+					logger.info(
+						"Replaying scripts on unstaged changes (replayFormatter enabled)...",
+					);
+					const lintTree = await saveIndexState();
+					await resetToTree(stashHash);
+					await runAllScripts();
+					await setIndexFromTree(lintTree);
+					// Unstaged changes are now reflected directly in the working tree;
+					// no stash apply needed during restoration.
+					stashHash = null;
+				}
 			}
 		}
 

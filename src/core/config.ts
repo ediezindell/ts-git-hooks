@@ -34,6 +34,7 @@ const HookValueSchema = v.union([
 const ConfigSchema = v.intersect([
 	v.object({
 		sequential: v.optional(v.boolean()),
+		replayFormatter: v.optional(v.boolean()),
 	}),
 	v.record(v.string(), v.union([v.boolean(), HookValueSchema])),
 ]);
@@ -96,9 +97,12 @@ function normalizeConfig(config: TSGitHookConfig): TSGitHookConfig {
 	if (config.sequential !== undefined) {
 		normalized.sequential = config.sequential;
 	}
+	if (config.replayFormatter !== undefined) {
+		normalized.replayFormatter = config.replayFormatter;
+	}
 
 	for (const [key, value] of Object.entries(config)) {
-		if (key === "sequential") continue;
+		if (key === "sequential" || key === "replayFormatter") continue;
 
 		if (value) {
 			const camelCaseHookName = kebabToCamel(key) as CamelCaseGitHook;

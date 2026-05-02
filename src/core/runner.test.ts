@@ -10,9 +10,11 @@ import {
 	getStagedFiles,
 	getUntrackedFiles,
 	hasUnstagedChanges,
+	resetToTree,
 	restoreFiles,
 	rollbackToPreCommitState,
 	saveIndexState,
+	setIndexFromTree,
 	stashApply,
 	stashCreate,
 } from "../utils/git";
@@ -77,6 +79,8 @@ const setupDefaultMocks = () => {
 	vi.mocked(hasUnstagedChanges).mockResolvedValue(false);
 	vi.mocked(evacuateFiles).mockResolvedValue(undefined);
 	vi.mocked(restoreFiles).mockResolvedValue(undefined);
+	vi.mocked(resetToTree).mockResolvedValue(undefined);
+	vi.mocked(setIndexFromTree).mockResolvedValue(undefined);
 };
 
 describe("runHook", () => {
@@ -263,6 +267,164 @@ describe("Hybrid Stashing logic", () => {
 		const stashApplyCallOrder =
 			vi.mocked(stashApply).mock.invocationCallOrder[0];
 		expect(rollbackCallOrder).toBeLessThan(stashApplyCallOrder);
+	});
+});
+
+describe("Formatter replay (replayFormatter)", () => {
+	beforeEach(() => {
+		setupDefaultMocks();
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("should replay scripts and skip stash apply when enabled, stash exists, and files were modified", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({
+			replayFormatter: true,
+			preCommit: { "*.ts": "format" },
+		});
+		vi.mocked(getGitStatus).mockResolvedValue({
+			stagedFiles: ["src/a.ts"],
+			untrackedItems: [],
+			unstagedChangesExist: true,
+		});
+		vi.mocked(stashCreate).mockResolvedValue("stashhash");
+		vi.mocked(saveIndexState)
+			.mockResolvedValueOnce("origIndex") // pre-stash
+			.mockResolvedValueOnce("lintTree"); // post-lint, pre-replay
+		vi.mocked(getChangedFiles).mockResolvedValue(["src/a.ts"]);
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		const result = await runHook("pre-commit");
+
+		expect(result).toBe(true);
+		// Scripts ran twice: once on staged-only, once on staged+unstaged
+		expect(spawn).toHaveBeenCalledTimes(2);
+		// Replay sequence: reset to stash WIP, then restore index to lintTree
+		expect(resetToTree).toHaveBeenCalledWith("stashhash");
+		expect(setIndexFromTree).toHaveBeenCalledWith("lintTree");
+		// Stash apply must NOT run — unstaged changes are now in the working tree directly
+		expect(stashApply).not.toHaveBeenCalled();
+	});
+
+	it("should not replay when replayFormatter is disabled (default behavior)", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({
+			preCommit: { "*.ts": "format" },
+		});
+		vi.mocked(getGitStatus).mockResolvedValue({
+			stagedFiles: ["src/a.ts"],
+			untrackedItems: [],
+			unstagedChangesExist: true,
+		});
+		vi.mocked(stashCreate).mockResolvedValue("stashhash");
+		vi.mocked(getChangedFiles).mockResolvedValue(["src/a.ts"]);
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		await runHook("pre-commit");
+
+		expect(resetToTree).not.toHaveBeenCalled();
+		expect(setIndexFromTree).not.toHaveBeenCalled();
+		// Original behavior: stash apply runs
+		expect(stashApply).toHaveBeenCalledWith("stashhash");
+	});
+
+	it("should not replay when there is no stash (no unstaged changes)", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({
+			replayFormatter: true,
+			preCommit: { "*.ts": "format" },
+		});
+		vi.mocked(getGitStatus).mockResolvedValue({
+			stagedFiles: ["src/a.ts"],
+			untrackedItems: [],
+			unstagedChangesExist: false,
+		});
+		vi.mocked(stashCreate).mockResolvedValue(null);
+		vi.mocked(getChangedFiles).mockResolvedValue(["src/a.ts"]);
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		await runHook("pre-commit");
+
+		expect(resetToTree).not.toHaveBeenCalled();
+		expect(setIndexFromTree).not.toHaveBeenCalled();
+		// Scripts ran only once
+		expect(spawn).toHaveBeenCalledTimes(1);
+	});
+
+	it("should not replay when scripts didn't modify any files", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({
+			replayFormatter: true,
+			preCommit: { "*.ts": "lint" },
+		});
+		vi.mocked(getGitStatus).mockResolvedValue({
+			stagedFiles: ["src/a.ts"],
+			untrackedItems: [],
+			unstagedChangesExist: true,
+		});
+		vi.mocked(stashCreate).mockResolvedValue("stashhash");
+		vi.mocked(getChangedFiles).mockResolvedValue([]); // no modifications
+		vi.mocked(spawn).mockImplementation(() => {
+			const p = new MockChildProcess();
+			simulateSuccess(p);
+			return p as any;
+		});
+
+		await runHook("pre-commit");
+
+		expect(resetToTree).not.toHaveBeenCalled();
+		// No formatter changes → original stash apply path is fine (no merge conflict possible)
+		expect(stashApply).toHaveBeenCalledWith("stashhash");
+	});
+
+	it("should fall back to rollback path when replay scripts fail", async () => {
+		vi.mocked(loadConfig).mockResolvedValue({
+			replayFormatter: true,
+			preCommit: { "*.ts": "format" },
+		});
+		vi.mocked(getGitStatus).mockResolvedValue({
+			stagedFiles: ["src/a.ts"],
+			untrackedItems: [],
+			unstagedChangesExist: true,
+		});
+		vi.mocked(stashCreate).mockResolvedValue("stashhash");
+		vi.mocked(saveIndexState)
+			.mockResolvedValueOnce("origIndex")
+			.mockResolvedValueOnce("lintTree");
+		vi.mocked(getChangedFiles).mockResolvedValue(["src/a.ts"]);
+
+		// First run succeeds, replay run fails
+		let callCount = 0;
+		vi.mocked(spawn).mockImplementation(() => {
+			callCount++;
+			const p = new MockChildProcess();
+			if (callCount === 1) {
+				simulateSuccess(p);
+			} else {
+				simulateFailure(p);
+			}
+			return p as any;
+		});
+
+		const result = await runHook("pre-commit");
+
+		expect(result).toBe(false);
+		// Replay was attempted
+		expect(resetToTree).toHaveBeenCalledWith("stashhash");
+		// Rollback path runs in finally because hookSucceeded never became true
+		expect(rollbackToPreCommitState).toHaveBeenCalledWith("origIndex");
+		expect(stashApply).toHaveBeenCalledWith("stashhash");
 	});
 });
 
