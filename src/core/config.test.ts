@@ -84,6 +84,27 @@ describe("loadConfig validation", () => {
 		expect(console.warn).not.toHaveBeenCalled();
 	});
 
+	it("should warn when per-hook config contains replayFormatter (only allowed at top level)", async () => {
+		await writeTestConfig(
+			"per-hook-replay-formatter",
+			`
+      export const config = {
+        "pre-commit": {
+          replayFormatter: true,
+          config: { "*.ts": "lint" }
+        }
+      };
+    `,
+		);
+
+		await loadConfig();
+
+		expect(console.warn).toHaveBeenCalledWith(
+			expect.stringContaining(`Invalid configuration in ${currentConfigName}:`),
+			expect.any(Object),
+		);
+	});
+
 	it("should handle configuration with sequential options", async () => {
 		await writeTestConfig(
 			"sequential",

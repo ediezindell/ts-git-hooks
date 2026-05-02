@@ -65,11 +65,16 @@ export type GlobHookConfig<T extends string> = Record<string, Script<T>>;
 export type SimpleHookConfig<T extends string> = Script<T>;
 
 /**
- * Configuration options for hook execution.
+ * Options that apply at the top level of `TSGitHookConfig`.
+ *
+ * `replayFormatter` lives here (and not in `PerHookOptions`) because the runtime
+ * only consults the top-level value. Allowing it per-hook would compile but
+ * silently no-op at runtime, so it is intentionally excluded from `PerHookOptions`.
  */
-export interface HookOptions {
+export interface GlobalHookOptions {
 	/**
 	 * Whether to execute scripts sequentially instead of in parallel.
+	 * Per-hook `sequential` overrides this default.
 	 * @default false
 	 */
 	sequential?: boolean;
@@ -91,9 +96,25 @@ export interface HookOptions {
 }
 
 /**
- * A wrapper for hook configuration that includes execution options.
+ * Options that may be set per-hook via `HookConfigWithOpts`.
+ *
+ * Strictly a subset of `GlobalHookOptions`: only options the runtime actually
+ * reads from the per-hook wrapper belong here.
  */
-export interface HookConfigWithOpts<_T extends string, C> extends HookOptions {
+export interface PerHookOptions {
+	/**
+	 * Whether to execute scripts for this hook sequentially instead of in parallel.
+	 * Overrides the top-level `sequential` for this hook.
+	 * @default false
+	 */
+	sequential?: boolean;
+}
+
+/**
+ * A wrapper for hook configuration that includes per-hook execution options.
+ */
+export interface HookConfigWithOpts<_T extends string, C>
+	extends PerHookOptions {
 	config: C;
 }
 
@@ -112,7 +133,7 @@ export interface HookConfigWithOpts<_T extends string, C> extends HookOptions {
  *   'pre-push': 'build'
  * };
  */
-export type TSGitHookConfig<T extends string = string> = HookOptions &
+export type TSGitHookConfig<T extends string = string> = GlobalHookOptions &
 	Partial<{
 		[K in GitHook]: K extends "preCommit" | "pre-commit"
 			? GlobHookConfig<T> | HookConfigWithOpts<T, GlobHookConfig<T>>

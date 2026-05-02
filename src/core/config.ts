@@ -22,10 +22,13 @@ const ScriptSchema = v.union([CommandSchema, v.array(CommandSchema)]);
 
 const GlobHookConfigSchema = v.record(v.string(), ScriptSchema);
 
+// Per-hook wrapper. Strict to keep runtime in sync with `PerHookOptions`:
+// `replayFormatter` is intentionally not allowed here because the runtime only
+// reads it from the top level — accepting it per-hook would silently no-op.
 const HookValueSchema = v.union([
 	ScriptSchema,
 	GlobHookConfigSchema,
-	v.object({
+	v.strictObject({
 		sequential: v.optional(v.boolean()),
 		config: v.union([ScriptSchema, GlobHookConfigSchema]),
 	}),
