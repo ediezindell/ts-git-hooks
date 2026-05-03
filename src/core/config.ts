@@ -8,6 +8,7 @@ import type {
 	TSGitHookConfig,
 } from "../types";
 import { fileExists } from "../utils/fs";
+import { logger } from "../utils/logger";
 import { kebabToCamel } from "../utils/string";
 
 /**
@@ -148,10 +149,14 @@ export async function loadConfig(): Promise<TSGitHookConfig | null> {
 		// Validate configuration structure at runtime
 		const result = v.safeParse(ConfigSchema, configModule.config);
 		if (!result.success) {
-			console.warn(
-				`Invalid configuration in ${_configFileName}:`,
-				v.flatten(result.issues).nested,
+			logger.error(
+				`Invalid configuration in ${_configFileName}:\n${JSON.stringify(
+					v.flatten(result.issues).nested,
+					null,
+					2,
+				)}`,
 			);
+			return null;
 		}
 
 		_memoizedConfig = normalizeConfig(configModule.config as TSGitHookConfig);

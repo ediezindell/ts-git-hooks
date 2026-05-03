@@ -49,9 +49,15 @@ function execGitStatus(args: string[]): Promise<number> {
 /**
  * Promisified version of `spawn` for running git commands.
  * Uses `spawn` directly to avoid shell overhead and argument parsing issues.
- * Returns the raw Buffer output for memory efficiency.
+ * Returns the raw Buffer output for memory efficiency. When `stdin` is supplied
+ * it is written to the child process before its stdin is closed, enabling
+ * `--pathspec-from-file=-` style invocations that bypass the OS argv length
+ * limit (notably the 256KB ceiling on macOS).
  */
-function execGitBuffer(args: string[]): Promise<Buffer> {
+function execGitBuffer(
+	args: string[],
+	stdin?: string | Buffer,
+): Promise<Buffer> {
 	return new Promise((resolve, reject) => {
 		const child = spawn("git", args);
 		const stdoutChunks: Buffer[] = [];
@@ -76,6 +82,11 @@ function execGitBuffer(args: string[]): Promise<Buffer> {
 		});
 
 		child.on("error", reject);
+
+		if (stdin !== undefined) {
+			child.stdin.write(stdin);
+			child.stdin.end();
+		}
 	});
 }
 
@@ -197,6 +208,12 @@ export async function rollbackToPreCommitState(
 /**
  * Gets a list of files that have been modified in the working directory (excluding untracked files).
  * Uses `git diff` which is faster than `git status` and avoids staging untracked files.
+ *
+ * `git diff` does not accept `--pathspec-from-file`, so when scoping to a
+ * caller-supplied list we fetch the unscoped diff and filter in-process. This
+ * keeps the OS argv length out of the picture while preserving the same set
+ * semantics the path-scoped form would have produced.
+ *
  * @returns A promise that resolves to an array of changed file paths.
  */
 export async function getChangedFiles(files?: string[]): Promise<string[]> {
@@ -204,12 +221,17 @@ export async function getChangedFiles(files?: string[]): Promise<string[]> {
 		return [];
 	}
 
-	const args = ["diff", "--name-only", "--diff-filter=ACMR", "-z"];
-	if (files) {
-		args.push("--", ...files);
-	}
+	const allChanged = await execGitList([
+		"diff",
+		"--name-only",
+		"--diff-filter=ACMR",
+		"-z",
+	]);
 
-	return execGitList(args);
+	if (!files) return allChanged;
+
+	const allowed = new Set(files);
+	return allChanged.filter((f) => allowed.has(f));
 }
 
 /**
@@ -221,15 +243,14 @@ export async function addFiles(files: string[], force = false): Promise<void> {
 	if (files.length === 0) {
 		return;
 	}
-	// Pass files directly as arguments to git add.
-	// This avoids shell quoting issues and command length limits are handled better by spawn.
 	const args = ["add"];
 	if (force) {
 		args.push("-f");
 	}
-	// Security: Use -- to separate options from file paths to prevent argument injection.
-	args.push("--", ...files);
-	await execGit(args);
+	// Pass paths via stdin (NUL-separated) so we never hit the OS argv length
+	// limit and avoid pathspec/option ambiguity entirely.
+	args.push("--pathspec-from-file=-", "--pathspec-file-nul");
+	await execGitBuffer(args, files.join("\0"));
 }
 
 /**

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { lstat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Options } from "micromatch";
@@ -629,7 +630,7 @@ async function performHybridStashing(
 			".git",
 			"ts-git-hooks",
 			"backups",
-			`${process.pid}_${Date.now()}`,
+			`${process.pid}_${Date.now()}_${randomBytes(4).toString("hex")}`,
 		);
 		stashTasks.push(
 			evacuateFiles(untrackedItems, evacuatedDir).then(() => {

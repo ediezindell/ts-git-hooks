@@ -35,22 +35,31 @@ vi.mock("node:child_process", () => ({
 	spawn: vi.fn(),
 }));
 
+type MockedChild = EventEmitter & {
+	stdout: EventEmitter;
+	stderr: EventEmitter;
+	stdin: { write: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> };
+};
+
+function attachStreams(): MockedChild {
+	const child = new EventEmitter() as MockedChild;
+	child.stdout = new EventEmitter();
+	child.stderr = new EventEmitter();
+	child.stdin = { write: vi.fn(), end: vi.fn() };
+	return child;
+}
+
 /**
  * Helper to mock spawn process
  */
 function mockSpawn(stdoutData: string, exitCode = 0, stderrData = "") {
-	const stdout = new EventEmitter();
-	const stderr = new EventEmitter();
-	const child = new EventEmitter();
-	(child as any).stdout = stdout;
-	(child as any).stderr = stderr;
-
+	const child = attachStreams();
 	(spawn as unknown as ReturnType<typeof vi.fn>).mockReturnValue(child);
 
 	// Trigger events on next tick to simulate async process
 	setTimeout(() => {
-		if (stdoutData) stdout.emit("data", Buffer.from(stdoutData));
-		if (stderrData) stderr.emit("data", Buffer.from(stderrData));
+		if (stdoutData) child.stdout.emit("data", Buffer.from(stdoutData));
+		if (stderrData) child.stderr.emit("data", Buffer.from(stderrData));
 		child.emit("close", exitCode);
 	}, 0);
 
@@ -61,18 +70,13 @@ function mockSpawn(stdoutData: string, exitCode = 0, stderrData = "") {
  * Helper to mock spawn process with chunks
  */
 function mockSpawnChunks(stdoutChunks: Buffer[], exitCode = 0) {
-	const stdout = new EventEmitter();
-	const stderr = new EventEmitter();
-	const child = new EventEmitter();
-	(child as any).stdout = stdout;
-	(child as any).stderr = stderr;
-
+	const child = attachStreams();
 	(spawn as unknown as ReturnType<typeof vi.fn>).mockReturnValue(child);
 
 	// Trigger events on next tick to simulate async process
 	setTimeout(() => {
 		for (const chunk of stdoutChunks) {
-			stdout.emit("data", chunk);
+			child.stdout.emit("data", chunk);
 		}
 		child.emit("close", exitCode);
 	}, 0);
@@ -113,18 +117,19 @@ describe("getChangedFiles", () => {
 		expect(files).toEqual(["file1.txt"]);
 	});
 
-	it("should pass file arguments to git diff", async () => {
-		mockSpawn("file1.txt\0");
-		const _files = await getChangedFiles(["file1.txt", "file2.txt"]);
+	it("should fetch the unscoped diff and filter in-process when files are provided", async () => {
+		// Scoping is done in JS because `git diff` lacks --pathspec-from-file;
+		// the spawn args must therefore be the bare unscoped diff command.
+		mockSpawn("file1.txt\0other.txt\0");
+		const files = await getChangedFiles(["file1.txt", "file2.txt"]);
 		expect(spawn).toHaveBeenCalledWith("git", [
 			"diff",
 			"--name-only",
 			"--diff-filter=ACMR",
 			"-z",
-			"--",
-			"file1.txt",
-			"file2.txt",
 		]);
+		// Only files in the caller's allow-list survive.
+		expect(files).toEqual(["file1.txt"]);
 	});
 
 	it("should correctly handle multi-byte characters split across chunks", async () => {
@@ -497,41 +502,43 @@ describe("addFiles", () => {
 		vi.resetAllMocks();
 	});
 
-	it("should call git add with files", async () => {
-		mockSpawn("");
+	it("should call git add via --pathspec-from-file stdin", async () => {
+		const child = mockSpawn("");
 		await addFiles(["file1.txt", "file2.txt"]);
 		expect(spawn).toHaveBeenCalledWith("git", [
 			"add",
-			"--",
-			"file1.txt",
-			"file2.txt",
+			"--pathspec-from-file=-",
+			"--pathspec-file-nul",
 		]);
+		expect(child.stdin.write).toHaveBeenCalledWith("file1.txt\0file2.txt");
+		expect(child.stdin.end).toHaveBeenCalled();
 	});
 
-	it("should use -- to separate options from filenames to prevent injection", async () => {
-		mockSpawn("");
+	it("should pass option-like file names through pathspec-file (no argv interpretation)", async () => {
+		const child = mockSpawn("");
 		const files = ["-f", "--version", "normal.ts"];
 		await addFiles(files);
 
+		// Pathspec via stdin means argv contains no file names; the dangerous
+		// strings cannot be reinterpreted as flags by git.
 		expect(spawn).toHaveBeenCalledWith("git", [
 			"add",
-			"--",
-			"-f",
-			"--version",
-			"normal.ts",
+			"--pathspec-from-file=-",
+			"--pathspec-file-nul",
 		]);
+		expect(child.stdin.write).toHaveBeenCalledWith("-f\0--version\0normal.ts");
 	});
 
 	it("should call git add with force flag when force is true", async () => {
-		mockSpawn("");
+		const child = mockSpawn("");
 		await addFiles(["file1.txt", "file2.txt"], true);
 		expect(spawn).toHaveBeenCalledWith("git", [
 			"add",
 			"-f",
-			"--",
-			"file1.txt",
-			"file2.txt",
+			"--pathspec-from-file=-",
+			"--pathspec-file-nul",
 		]);
+		expect(child.stdin.write).toHaveBeenCalledWith("file1.txt\0file2.txt");
 	});
 
 	it("should not call git add when no files are provided", async () => {
@@ -545,8 +552,13 @@ describe("addFiles", () => {
 	});
 
 	it("should not add force flag when force is false", async () => {
-		mockSpawn("");
+		const child = mockSpawn("");
 		await addFiles(["file1.txt"], false);
-		expect(spawn).toHaveBeenCalledWith("git", ["add", "--", "file1.txt"]);
+		expect(spawn).toHaveBeenCalledWith("git", [
+			"add",
+			"--pathspec-from-file=-",
+			"--pathspec-file-nul",
+		]);
+		expect(child.stdin.write).toHaveBeenCalledWith("file1.txt");
 	});
 });
