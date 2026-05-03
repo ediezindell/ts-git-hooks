@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveScriptsToRun } from "./runner";
 
+vi.mock("node:fs/promises", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs/promises")>();
+	return {
+		...actual,
+		lstat: vi.fn().mockResolvedValue({}),
+	};
+});
+
 vi.mock("../utils/git", () => ({
 	getStagedFiles: vi.fn(),
 	getGitStatus: vi.fn(),

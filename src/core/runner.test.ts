@@ -37,7 +37,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:fs/promises")>();
 	return {
 		...actual,
-		stat: vi.fn().mockResolvedValue({}),
+		lstat: vi.fn().mockResolvedValue({}),
 	};
 });
 
