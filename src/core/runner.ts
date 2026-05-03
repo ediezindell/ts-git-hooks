@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { stat } from "node:fs/promises";
+import { lstat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Options } from "micromatch";
 import { parse, quote } from "shell-quote";
@@ -36,6 +36,25 @@ import { isGlobHookConfig, isHookConfigWithOpts, loadConfig } from "./config";
  * Can be a simple string (handled via shell) or an object with split arguments (handled directly).
  */
 export type Executable = string | { script: string; args: string[] };
+
+/**
+ * Filters a list of file paths to those that exist on disk, using lstat (does not follow symlinks).
+ * Aligned with restoreFiles' lstat usage so symlink semantics are consistent.
+ */
+async function filterExisting(files: string[]): Promise<string[]> {
+	if (files.length === 0) return files;
+	const results = await Promise.all(
+		files.map(async (f) => {
+			try {
+				await lstat(f);
+				return f;
+			} catch {
+				return null;
+			}
+		}),
+	);
+	return results.filter((f): f is string => f !== null);
+}
 
 /**
  * Type guard to check if a command is a tuple [script, ArgsFn].
@@ -255,6 +274,10 @@ export async function resolveScriptsToRun(
 			const patterns = Object.keys(hookConfig);
 			matchedFiles = mm(stagedFiles, patterns, { matchBase: true });
 
+			// Existence filter on the matched subset (M) instead of full staged list (N).
+			// `--diff-filter=ACMR` only excludes index-side deletes; worktree-only deletes still slip through.
+			matchedFiles = await filterExisting(matchedFiles);
+
 			if (matchedFiles.length > 0) {
 				if (patterns.length === 1) {
 					addCommandBatch(getCommands(hookConfig[patterns[0]]), matchedFiles);
@@ -291,7 +314,9 @@ export async function resolveScriptsToRun(
 	} else {
 		// Optimization: For simple hooks, bypass grouping logic completely.
 		const commandsToProcess = getCommands(hookConfig);
-		const files = stagedFiles ?? [];
+		// Filter when an argsFn-bearing command is present — staged files are passed
+		// to user code, and we keep the historical "non-existent excluded" semantic.
+		const files = stagedFiles ? await filterExisting(stagedFiles) : [];
 		for (const command of commandsToProcess) {
 			scriptsToRun.push(processCommand(command, files, false));
 		}
@@ -680,24 +705,12 @@ export async function runHook(hookName: KebabCaseGitHook): Promise<boolean> {
 	const { stagedFiles, untrackedItems, unstagedChangesExist } =
 		await determineGitStatus(needsStash, needsStagedFiles, initialGitStatus);
 
-	// Defense-in-depth: Filter stagedFiles to only include existing files.
-	// This prevents tools from failing if a deleted file somehow slipped into the list.
-	const existingStagedFiles = (
-		await Promise.all(
-			stagedFiles.map(async (file) => {
-				try {
-					await stat(file);
-					return file;
-				} catch {
-					return null;
-				}
-			}),
-		)
-	).filter((f): f is string => f !== null);
-
+	// Existence filtering is performed inside resolveScriptsToRun on the matched
+	// subset (glob hooks) or on the staged input (simple+tuple hooks) so we avoid
+	// stat'ing files that micromatch will discard.
 	const { scripts: finalScripts, matchedFiles } = await resolveScriptsToRun(
 		hookConfig,
-		existingStagedFiles,
+		stagedFiles,
 	);
 
 	if (finalScripts.length === 0) {
