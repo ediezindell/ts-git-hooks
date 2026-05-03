@@ -14,7 +14,7 @@ TypeScript-first, type-safe Git hooks manager.
 ## Requirements
 
 -   **Node.js**: v22.6.0 or higher (for native TypeScript support).
--   **Git**: Installed and available in your PATH.
+-   **Git**: v2.25 or higher (we pass file lists to `git add` via `--pathspec-from-file=-` to avoid the OS argv length limit).
 
 `ts-git-hooks` is built on a few key principles to make managing your git hooks simple and robust.
 

@@ -10,6 +10,7 @@ describe("loadConfig validation", () => {
 	beforeEach(async () => {
 		_resetConfig();
 		vi.spyOn(console, "warn").mockImplementation(() => {});
+		vi.spyOn(console, "error").mockImplementation(() => {});
 	});
 
 	afterEach(async () => {
@@ -30,7 +31,7 @@ describe("loadConfig validation", () => {
 		await fs.writeFile(testConfigPath, content);
 	}
 
-	it("should warn when configuration is invalid", async () => {
+	it("should fail-closed (return null + log error) when configuration is invalid", async () => {
 		await writeTestConfig(
 			"invalid",
 			`
@@ -40,15 +41,15 @@ describe("loadConfig validation", () => {
     `,
 		);
 
-		await loadConfig();
+		const config = await loadConfig();
 
-		expect(console.warn).toHaveBeenCalledWith(
+		expect(config).toBeNull();
+		expect(console.error).toHaveBeenCalledWith(
 			expect.stringContaining(`Invalid configuration in ${currentConfigName}:`),
-			expect.any(Object),
 		);
 	});
 
-	it("should NOT warn when configuration is valid", async () => {
+	it("should NOT log when configuration is valid", async () => {
 		await writeTestConfig(
 			"valid",
 			`
@@ -59,9 +60,11 @@ describe("loadConfig validation", () => {
     `,
 		);
 
-		await loadConfig();
+		const config = await loadConfig();
 
+		expect(config).not.toBeNull();
 		expect(console.warn).not.toHaveBeenCalled();
+		expect(console.error).not.toHaveBeenCalled();
 	});
 
 	it("should handle hook names in kebab-case and camelCase", async () => {
@@ -82,9 +85,10 @@ describe("loadConfig validation", () => {
 			prePush: "test",
 		});
 		expect(console.warn).not.toHaveBeenCalled();
+		expect(console.error).not.toHaveBeenCalled();
 	});
 
-	it("should warn when per-hook config contains replayFormatter (only allowed at top level)", async () => {
+	it("should fail-closed when per-hook config contains replayFormatter (only allowed at top level)", async () => {
 		await writeTestConfig(
 			"per-hook-replay-formatter",
 			`
@@ -97,11 +101,11 @@ describe("loadConfig validation", () => {
     `,
 		);
 
-		await loadConfig();
+		const config = await loadConfig();
 
-		expect(console.warn).toHaveBeenCalledWith(
+		expect(config).toBeNull();
+		expect(console.error).toHaveBeenCalledWith(
 			expect.stringContaining(`Invalid configuration in ${currentConfigName}:`),
-			expect.any(Object),
 		);
 	});
 
@@ -129,5 +133,6 @@ describe("loadConfig validation", () => {
 			},
 		});
 		expect(console.warn).not.toHaveBeenCalled();
+		expect(console.error).not.toHaveBeenCalled();
 	});
 });
