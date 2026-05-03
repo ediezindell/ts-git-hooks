@@ -104,6 +104,23 @@ export const config: TSGitHookConfig<"lint"> = {
 };
 ```
 
+#### Quoting files when using shell operators
+
+If `argsFn` returns a string containing shell operators (`&&`, `||`, `;`, `|`, redirects), `ts-git-hooks` runs it through a shell. Wrap file paths with the `quote` helper so filenames containing spaces or shell metacharacters cannot inject shell syntax.
+
+```ts
+import type { TSGitHookConfig } from 'ts-git-hooks';
+import { quote } from 'ts-git-hooks';
+
+export const config: TSGitHookConfig<"lint"> = {
+  'pre-commit': {
+    '*.ts': ['lint', (files) => `lint ${quote(files)} && echo done`],
+  },
+};
+```
+
+When `argsFn` returns a string without shell operators (the common case), the result is parsed and passed as discrete arguments — no shell, no quoting needed.
+
 ## Supported Hooks
 
 All standard git hooks are supported. Both camelCase (`preCommit`) and kebab-case (`pre-commit`) are supported in the configuration file.
