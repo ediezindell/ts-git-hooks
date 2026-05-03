@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { quote } from "shell-quote";
 import { loadConfig } from "../core/config";
 import type { CamelCaseGitHook, KebabCaseGitHook } from "../types";
 import { toKebabCase } from "../utils/casing";
@@ -24,21 +25,49 @@ ${command}
 `;
 
 /**
+ * Resolves the absolute path to dist/cli.js from the running CLI process so the
+ * hook script can invoke node directly with --experimental-strip-types and skip
+ * the self-respawn fork. Returns null when the entry path is not recognizable
+ * (e.g. test runners, Yarn PnP virtual paths) so callers fall back to legacy
+ * invocation.
+ */
+export function getDistCliPath(): string | null {
+	const entry = process.argv[1];
+	if (!entry || !entry.endsWith("cli.js")) return null;
+	return entry;
+}
+
+/**
  * Generates the shell command for a git hook, including an optimization for local execution.
  * @param packageManager The detected package manager.
  * @param hookName The kebab-case name of the git hook.
+ * @param cliPath Absolute path to dist/cli.js, or null when unavailable.
  */
 function getHookExecutionCommand(
 	packageManager: PackageManager,
 	hookName: string,
+	cliPath: string | null,
 ): string {
 	const fallbackCommand =
 		packageManager === "npm"
 			? `exec npm exec ts-git-hooks run ${hookName}`
 			: `exec ${packageManager} ts-git-hooks run ${hookName}`;
 
-	// Optimization: Check for local binary to bypass package manager overhead (~300ms for npm exec).
-	return `if [ -x "./node_modules/.bin/ts-git-hooks" ]; then
+	const legacyBranch = `if [ -x "./node_modules/.bin/ts-git-hooks" ]; then
+  exec ./node_modules/.bin/ts-git-hooks run ${hookName}
+else
+  ${fallbackCommand}
+fi`;
+
+	if (!cliPath) return legacyBranch;
+
+	const quotedCliPath = quote([cliPath]);
+	// First branch invokes node with --experimental-strip-types directly, avoiding
+	// the cli.js self-respawn (~30-100ms per hook). Falls back to .bin shim, then
+	// the package manager, if the embedded path no longer points to a real file.
+	return `if [ -f ${quotedCliPath} ]; then
+  exec node --experimental-strip-types ${quotedCliPath} run ${hookName}
+elif [ -x "./node_modules/.bin/ts-git-hooks" ]; then
   exec ./node_modules/.bin/ts-git-hooks run ${hookName}
 else
   ${fallbackCommand}
@@ -84,6 +113,7 @@ export async function install() {
 				const command = getHookExecutionCommand(
 					packageManager,
 					kebabCaseHookName,
+					getDistCliPath(),
 				);
 				const scriptContent = hookScriptContent(command);
 

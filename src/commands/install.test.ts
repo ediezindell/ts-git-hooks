@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../core/config";
 import { getPackageManager } from "../utils/packageManager";
-import { install } from "./install";
+import { getDistCliPath, install } from "./install";
 
 // Mock dependencies
 vi.mock("node:fs", () => ({
@@ -210,5 +210,81 @@ fi`;
 
 		// Assert
 		expect(fs.writeFile).not.toHaveBeenCalled();
+	});
+
+	it("should write the optimized direct-node branch when getDistCliPath resolves", async () => {
+		const originalArgv1 = process.argv[1];
+		process.argv[1] = "/abs/path/to/node_modules/ts-git-hooks/dist/cli.js";
+		try {
+			await install();
+
+			const preCommitPath = path.join(gitHooksDir, "pre-commit");
+			const expectedOptimized = `if [ -f /abs/path/to/node_modules/ts-git-hooks/dist/cli.js ]; then
+  exec node --experimental-strip-types /abs/path/to/node_modules/ts-git-hooks/dist/cli.js run pre-commit
+elif [ -x "./node_modules/.bin/ts-git-hooks" ]; then
+  exec ./node_modules/.bin/ts-git-hooks run pre-commit
+else
+  exec npm exec ts-git-hooks run pre-commit
+fi`;
+
+			expect(fs.writeFile).toHaveBeenCalledWith(
+				preCommitPath,
+				expect.stringContaining(expectedOptimized),
+				"utf-8",
+			);
+		} finally {
+			process.argv[1] = originalArgv1;
+		}
+	});
+
+	it("should shell-quote cliPath that contains spaces or single quotes", async () => {
+		const originalArgv1 = process.argv[1];
+		process.argv[1] = "/Users/o'brien/My Projects/dist/cli.js";
+		try {
+			await install();
+
+			// shell-quote chooses double quotes when the value contains a single quote;
+			// the path is preserved verbatim inside the quotes.
+			const quoted = `"/Users/o'brien/My Projects/dist/cli.js"`;
+			const preCommitPath = path.join(gitHooksDir, "pre-commit");
+
+			expect(fs.writeFile).toHaveBeenCalledWith(
+				preCommitPath,
+				expect.stringContaining(`if [ -f ${quoted} ]`),
+				"utf-8",
+			);
+			expect(fs.writeFile).toHaveBeenCalledWith(
+				preCommitPath,
+				expect.stringContaining(
+					`exec node --experimental-strip-types ${quoted} run pre-commit`,
+				),
+				"utf-8",
+			);
+		} finally {
+			process.argv[1] = originalArgv1;
+		}
+	});
+});
+
+describe("getDistCliPath", () => {
+	const originalArgv1 = process.argv[1];
+
+	afterEach(() => {
+		process.argv[1] = originalArgv1;
+	});
+
+	it("returns the entry path when it ends with cli.js", () => {
+		process.argv[1] = "/abs/path/dist/cli.js";
+		expect(getDistCliPath()).toBe("/abs/path/dist/cli.js");
+	});
+
+	it("returns null when entry does not end with cli.js (e.g. test runner)", () => {
+		process.argv[1] = "/abs/path/node_modules/vitest/dist/runner.mjs";
+		expect(getDistCliPath()).toBeNull();
+	});
+
+	it("returns null when process.argv[1] is empty", () => {
+		process.argv[1] = "";
+		expect(getDistCliPath()).toBeNull();
 	});
 });
