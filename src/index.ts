@@ -6,3 +6,4 @@ export { uninstall } from "./commands/uninstall";
 export { loadConfig } from "./core/config";
 export { runHook } from "./core/runner";
 export * from "./types";
+export { quote } from "./utils/shell";

@@ -10,6 +10,10 @@ const DEFAULT_CONFIG_CONTENT = `\
 import type { TSGitHookConfig } from 'ts-git-hooks';
 import type { PackageScripts } from './git-hooks.d.ts';
 
+// When a custom argsFn returns a string with shell operators (&&, ||, ;, |),
+// import 'quote' from 'ts-git-hooks' and wrap file lists with quote(files) so
+// filenames cannot inject shell syntax.
+//
 // For type safety, you can use the 'PackageScripts' type:
 // export const config: TSGitHookConfig<PackageScripts> = {
 export const config: TSGitHookConfig = {

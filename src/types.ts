@@ -26,6 +26,17 @@ export type GitHook = KebabCaseGitHook | CamelCaseGitHook;
 
 /**
  * A function that takes a list of file paths and returns a command string.
+ *
+ * @remarks
+ * If the returned string contains shell operators (`&&`, `||`, `;`, `|`,
+ * redirects), the runner executes it via `shell: true`. Embed file paths
+ * through {@link quote} (exported from `ts-git-hooks`) in that case to
+ * prevent filenames containing shell metacharacters from being interpreted
+ * as code.
+ *
+ * @example
+ * import { quote, type ArgsFn } from 'ts-git-hooks';
+ * const argsFn: ArgsFn = (files) => `lint ${quote(files)} && echo done`;
  */
 export type ArgsFn = (files: string[], script: string) => string;
 

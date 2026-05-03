@@ -101,6 +101,23 @@ export const config: TSGitHookConfig<"lint"> = {
 };
 ```
 
+#### シェル演算子を使う場合の quoting
+
+`argsFn` が `&&` / `||` / `;` / `|` / リダイレクトなどのシェル演算子を含む文字列を返した場合、`ts-git-hooks` はそのコマンドをシェル経由 (`shell: true`) で実行します。このとき、ファイル名に空白やシェルメタ文字が含まれていてもシェル構文として解釈されないよう、`quote` ヘルパーで包んでください。
+
+```ts
+import type { TSGitHookConfig } from 'ts-git-hooks';
+import { quote } from 'ts-git-hooks';
+
+export const config: TSGitHookConfig<"lint"> = {
+  'pre-commit': {
+    '*.ts': ['lint', (files) => `lint ${quote(files)} && echo done`],
+  },
+};
+```
+
+`argsFn` がシェル演算子を含まない文字列を返す通常のケースでは、結果はパースされて個別引数として直接渡されるため、シェルを経由せず quoting も不要です。
+
 ## サポートされているフック
 
 すべての標準的な Git フックがサポートされています。設定ファイルでは、キャメルケース (`preCommit`) とケバブケース (`pre-commit`) の両方がサポートされています。
