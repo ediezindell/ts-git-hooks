@@ -137,7 +137,7 @@ describe("CLI entry point", () => {
 	});
 });
 
-describe("ensureRuntimeFlags – respawn close handler", () => {
+describe("ensureRuntimeFlags respawn close handler", () => {
 	let exitSpy: vi.SpyInstance;
 	let savedNodeEnv: string | undefined;
 
@@ -165,8 +165,6 @@ describe("ensureRuntimeFlags – respawn close handler", () => {
 		vi.restoreAllMocks();
 	});
 
-	/** Invoke ensureRuntimeFlags (via a fresh dynamic import) and return the
-	 *  "close" handler that was registered on the mock child. */
 	const getCloseHandler = async (): Promise<
 		(code: number | null, signal: string | null) => void
 	> => {
