@@ -416,18 +416,28 @@ describe("restoreFiles", () => {
 	});
 
 	it("should create a backup file if destination exists and content differs", async () => {
-		// Scenario: restore 'file1.txt' but it exists with DIFFERENT content
+		// Scenario: restore 'file1.txt' but it exists with DIFFERENT content,
+		// and no pre-existing ".backup" file is present in the worktree.
 		vi.mocked(readdir).mockResolvedValue([
 			{ name: "file1.txt", isDirectory: () => false } as any,
 		]);
 
-		// Both exist
-		vi.mocked(lstat).mockResolvedValue({
+		const fileStat = {
 			isDirectory: () => false,
 			isSymbolicLink: () => false,
 			isFile: () => true,
 			size: 100,
-		} as any);
+		} as any;
+
+		// "backup/file1.txt" (src) and "./file1.txt" (dest) exist as files.
+		// "./file1.txt.backup" does NOT exist (probe finds it free).
+		vi.mocked(lstat).mockImplementation((path) => {
+			const p = path.toString();
+			if (p === "./file1.txt.backup") {
+				return Promise.reject(new Error("ENOENT"));
+			}
+			return Promise.resolve(fileStat);
+		});
 
 		// Different content
 		vi.mocked(readFile)
@@ -445,25 +455,120 @@ describe("restoreFiles", () => {
 		expect(rename).not.toHaveBeenCalledWith("backup/file1.txt", "./file1.txt");
 	});
 
+	it("should probe a free name when a .backup file already exists", async () => {
+		// Scenario: conflict on 'file1.txt', AND a user-created
+		// "./file1.txt.backup" already exists. The evacuated copy must land at
+		// "./file1.txt.backup.1" without clobbering the pre-existing ".backup".
+		vi.mocked(readdir).mockResolvedValue([
+			{ name: "file1.txt", isDirectory: () => false } as any,
+		]);
+
+		const fileStat = {
+			isDirectory: () => false,
+			isSymbolicLink: () => false,
+			isFile: () => true,
+			size: 100,
+		} as any;
+
+		// "./file1.txt.backup" exists (user file). ".backup.1" is free.
+		vi.mocked(lstat).mockImplementation((path) => {
+			const p = path.toString();
+			if (p === "./file1.txt.backup.1") {
+				return Promise.reject(new Error("ENOENT"));
+			}
+			return Promise.resolve(fileStat);
+		});
+
+		// Different content (src vs dest)
+		vi.mocked(readFile)
+			.mockResolvedValueOnce(Buffer.from("backup content"))
+			.mockResolvedValueOnce(Buffer.from("worktree content"));
+
+		await restoreFiles("backup");
+
+		// Evacuated copy lands at the probed free name
+		expect(rename).toHaveBeenCalledWith(
+			"backup/file1.txt",
+			"./file1.txt.backup.1",
+		);
+		// Must NOT overwrite the pre-existing user ".backup"
+		expect(rename).not.toHaveBeenCalledWith(
+			"backup/file1.txt",
+			"./file1.txt.backup",
+		);
+	});
+
+	it("should keep probing past .backup.1 when both .backup and .backup.1 exist", async () => {
+		// Scenario: conflict on 'file1.txt', and BOTH "./file1.txt.backup" and
+		// "./file1.txt.backup.1" already exist. Must land at ".backup.2".
+		vi.mocked(readdir).mockResolvedValue([
+			{ name: "file1.txt", isDirectory: () => false } as any,
+		]);
+
+		const fileStat = {
+			isDirectory: () => false,
+			isSymbolicLink: () => false,
+			isFile: () => true,
+			size: 100,
+		} as any;
+
+		// ".backup" and ".backup.1" exist; ".backup.2" is free.
+		vi.mocked(lstat).mockImplementation((path) => {
+			const p = path.toString();
+			if (p === "./file1.txt.backup.2") {
+				return Promise.reject(new Error("ENOENT"));
+			}
+			return Promise.resolve(fileStat);
+		});
+
+		// Different content (src vs dest)
+		vi.mocked(readFile)
+			.mockResolvedValueOnce(Buffer.from("backup content"))
+			.mockResolvedValueOnce(Buffer.from("worktree content"));
+
+		await restoreFiles("backup");
+
+		expect(rename).toHaveBeenCalledWith(
+			"backup/file1.txt",
+			"./file1.txt.backup.2",
+		);
+		expect(rename).not.toHaveBeenCalledWith(
+			"backup/file1.txt",
+			"./file1.txt.backup",
+		);
+		expect(rename).not.toHaveBeenCalledWith(
+			"backup/file1.txt",
+			"./file1.txt.backup.1",
+		);
+	});
+
 	it("should detect conflict if destination is symlink and src is file", async () => {
 		vi.mocked(readdir).mockResolvedValue([
 			{ name: "link.txt", isDirectory: () => false } as any,
 		]);
 
-		// Dest is symlink, Src is file
-		vi.mocked(lstat)
-			// lstat call for dest (first call)
-			.mockResolvedValueOnce({
+		// Dest "./link.txt" is a symlink, src "backup/link.txt" is a file.
+		// The probe target "./link.txt.backup" does not exist (free).
+		vi.mocked(lstat).mockImplementation((path) => {
+			const p = path.toString();
+			if (p === "./link.txt.backup") {
+				return Promise.reject(new Error("ENOENT"));
+			}
+			if (p === "./link.txt") {
+				// Dest is symlink
+				return Promise.resolve({
+					isDirectory: () => false,
+					isSymbolicLink: () => true,
+					isFile: () => false,
+				} as any);
+			}
+			// Src is file
+			return Promise.resolve({
 				isDirectory: () => false,
-				isSymbolicLink: () => true, // Dest is symlink
-				isFile: () => false,
-			} as any)
-			// lstat call for src (inside areFilesIdentical helper)
-			.mockResolvedValueOnce({
-				isDirectory: () => false,
-				isSymbolicLink: () => false, // Src is file
+				isSymbolicLink: () => false,
 				isFile: () => true,
 			} as any);
+		});
 
 		await restoreFiles("backup");
 

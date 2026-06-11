@@ -408,9 +408,19 @@ export async function restoreFiles(
 							return;
 						}
 
-						// Conflict: File exists and is different.
-						// Save backup to a conflict file instead of overwriting.
-						const backupDest = `${dest}.backup`;
+						// Conflict: File exists and is different. Probe for a free
+						// name so a user-created "*.backup" file is never clobbered
+						// (rename overwrites its destination unconditionally).
+						let backupDest = `${dest}.backup`;
+						for (
+							let suffix = 1;
+							await lstat(backupDest)
+								.then(() => true)
+								.catch(() => false);
+							suffix++
+						) {
+							backupDest = `${dest}.backup.${suffix}`;
+						}
 						logger.warn(
 							`Conflict: File "${dest}" already exists and differs from backup.\n` +
 								`Restoring backup to "${backupDest}" to avoid overwriting your changes.`,
