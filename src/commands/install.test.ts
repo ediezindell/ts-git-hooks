@@ -237,6 +237,66 @@ fi`;
 		}
 	});
 
+	it("should still write hook files for normal hooks when global options are present", async () => {
+		// Arrange
+		vi.mocked(loadConfig).mockResolvedValue({
+			sequential: true,
+			replayFormatter: true,
+			preCommit: "lint",
+		} as any);
+
+		// Act
+		await install();
+
+		// Assert
+		const preCommitPath = path.join(gitHooksDir, "pre-commit");
+		expect(fs.writeFile).toHaveBeenCalledWith(
+			preCommitPath,
+			expect.stringContaining("ts-git-hooks run pre-commit"),
+			"utf-8",
+		);
+		// Confirm only 1 hook file (not sequential or replay-formatter)
+		expect(fs.writeFile).toHaveBeenCalledTimes(1);
+	});
+
+	it("should not write a hook file for the global option 'replayFormatter'", async () => {
+		// Arrange
+		vi.mocked(loadConfig).mockResolvedValue({
+			replayFormatter: true,
+			preCommit: "lint",
+		} as any);
+
+		// Act
+		await install();
+
+		// Assert
+		const replayFormatterPath = path.join(gitHooksDir, "replay-formatter");
+		expect(fs.writeFile).not.toHaveBeenCalledWith(
+			replayFormatterPath,
+			expect.anything(),
+			expect.anything(),
+		);
+	});
+
+	it("should not write a hook file for the global option 'sequential'", async () => {
+		// Arrange
+		vi.mocked(loadConfig).mockResolvedValue({
+			sequential: true,
+			preCommit: "lint",
+		} as any);
+
+		// Act
+		await install();
+
+		// Assert
+		const sequentialPath = path.join(gitHooksDir, "sequential");
+		expect(fs.writeFile).not.toHaveBeenCalledWith(
+			sequentialPath,
+			expect.anything(),
+			expect.anything(),
+		);
+	});
+
 	it("should shell-quote cliPath that contains spaces or single quotes", async () => {
 		const originalArgv1 = process.argv[1];
 		process.argv[1] = "/Users/o'brien/My Projects/dist/cli.js";

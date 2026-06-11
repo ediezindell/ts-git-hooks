@@ -43,6 +43,8 @@ const ConfigSchema = v.intersect([
 	v.record(v.string(), v.union([v.boolean(), HookValueSchema])),
 ]);
 
+export const GLOBAL_OPTION_KEYS = new Set(["sequential", "replayFormatter"]);
+
 // Memoize loaded configuration to avoid repeated parsing and normalization in the same process
 let _memoizedConfig: TSGitHookConfig | null = null;
 let _configFileName = "git-hooks.config.ts";
@@ -106,7 +108,7 @@ function normalizeConfig(config: TSGitHookConfig): TSGitHookConfig {
 	}
 
 	for (const [key, value] of Object.entries(config)) {
-		if (key === "sequential" || key === "replayFormatter") continue;
+		if (GLOBAL_OPTION_KEYS.has(key)) continue;
 
 		if (value) {
 			const camelCaseHookName = kebabToCamel(key) as CamelCaseGitHook;

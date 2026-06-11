@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { quote } from "shell-quote";
-import { loadConfig } from "../core/config";
+import { GLOBAL_OPTION_KEYS, loadConfig } from "../core/config";
 import type { CamelCaseGitHook, KebabCaseGitHook } from "../types";
 import { toKebabCase } from "../utils/casing";
 import { logger } from "../utils/logger";
@@ -97,6 +97,7 @@ export async function install() {
 
 		await Promise.all(
 			hookNames.map(async (hookName) => {
+				if (GLOBAL_OPTION_KEYS.has(hookName)) return;
 				if (!config[hookName]) return;
 
 				const kebabCaseHookName = toKebabCase(hookName);
