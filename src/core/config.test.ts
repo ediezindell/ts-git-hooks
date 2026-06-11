@@ -1,7 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { _resetConfig, _setConfigFileName, loadConfig } from "./config";
+import {
+	_resetConfig,
+	_setConfigFileName,
+	isGlobHookConfig,
+	isHookConfigWithOpts,
+	loadConfig,
+} from "./config";
 
 describe("loadConfig validation", () => {
 	let testConfigPath: string;
@@ -134,5 +140,33 @@ describe("loadConfig validation", () => {
 		});
 		expect(console.warn).not.toHaveBeenCalled();
 		expect(console.error).not.toHaveBeenCalled();
+	});
+});
+
+describe("isHookConfigWithOpts / isGlobHookConfig type guards", () => {
+	it("should NOT treat a glob map with a literal 'config' pattern key as an options wrapper", () => {
+		const value = { config: "lint", "*.ts": "tsc" };
+
+		expect(isHookConfigWithOpts(value)).toBe(false);
+		expect(isGlobHookConfig(value)).toBe(true);
+	});
+
+	it("should treat { sequential, config } as an options wrapper", () => {
+		const value = { sequential: true, config: "lint" };
+
+		expect(isHookConfigWithOpts(value)).toBe(true);
+	});
+
+	it("should still treat { config } (only the 'config' key) as an options wrapper", () => {
+		const value = { config: "lint" };
+
+		expect(isHookConfigWithOpts(value)).toBe(true);
+	});
+
+	it("should treat a plain glob map as a glob hook config, not an options wrapper", () => {
+		const value = { "*.ts": "tsc" };
+
+		expect(isGlobHookConfig(value)).toBe(true);
+		expect(isHookConfigWithOpts(value)).toBe(false);
 	});
 });
