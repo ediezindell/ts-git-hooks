@@ -66,7 +66,7 @@ export async function list() {
 
 	logger.info("Configured git hooks:");
 	for (const hookName of configuredHooks) {
-		if (GLOBAL_OPTION_KEYS.has(hookName as string)) continue;
+		if (GLOBAL_OPTION_KEYS.has(hookName)) continue;
 
 		const rawHookConfig = config[hookName as CamelCaseGitHook];
 		if (!rawHookConfig) {
