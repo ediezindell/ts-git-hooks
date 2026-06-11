@@ -155,12 +155,14 @@ describe("isHookConfigWithOpts / isGlobHookConfig type guards", () => {
 		const value = { sequential: true, config: "lint" };
 
 		expect(isHookConfigWithOpts(value)).toBe(true);
+		expect(isGlobHookConfig(value)).toBe(false);
 	});
 
 	it("should still treat { config } (only the 'config' key) as an options wrapper", () => {
 		const value = { config: "lint" };
 
 		expect(isHookConfigWithOpts(value)).toBe(true);
+		expect(isGlobHookConfig(value)).toBe(false);
 	});
 
 	it("should treat a plain glob map as a glob hook config, not an options wrapper", () => {
