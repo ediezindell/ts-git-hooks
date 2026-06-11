@@ -109,6 +109,99 @@ describe("loadConfig validation", () => {
 		);
 	});
 
+	it("should accept valid string command, tuple command, and array of commands", async () => {
+		await writeTestConfig(
+			"valid-commands",
+			`
+      export const config = {
+        "pre-push": "test",
+        "pre-commit": [["lint", () => []], "typecheck"]
+      };
+    `,
+		);
+
+		const config = await loadConfig();
+
+		expect(config).not.toBeNull();
+		expect(config).toEqual({
+			prePush: "test",
+			preCommit: [["lint", expect.any(Function)], "typecheck"],
+		});
+		expect(console.error).not.toHaveBeenCalled();
+	});
+
+	it("should reject tuple with empty script name (['', () => []])", async () => {
+		await writeTestConfig(
+			"empty-tuple-command",
+			`
+      export const config = {
+        "pre-push": [["", () => []]]
+      };
+    `,
+		);
+
+		const config = await loadConfig();
+
+		expect(config).toBeNull();
+		expect(console.error).toHaveBeenCalledWith(
+			expect.stringContaining(`Invalid configuration in ${currentConfigName}:`),
+		);
+	});
+
+	it("should reject whitespace-only command ('   ')", async () => {
+		await writeTestConfig(
+			"whitespace-command",
+			`
+      export const config = {
+        "pre-push": "   "
+      };
+    `,
+		);
+
+		const config = await loadConfig();
+
+		expect(config).toBeNull();
+		expect(console.error).toHaveBeenCalledWith(
+			expect.stringContaining(`Invalid configuration in ${currentConfigName}:`),
+		);
+	});
+
+	it("should reject empty string command in glob value ({ '*.ts': '' })", async () => {
+		await writeTestConfig(
+			"empty-glob-command",
+			`
+      export const config = {
+        "pre-commit": { "*.ts": "" }
+      };
+    `,
+		);
+
+		const config = await loadConfig();
+
+		expect(config).toBeNull();
+		expect(console.error).toHaveBeenCalledWith(
+			expect.stringContaining(`Invalid configuration in ${currentConfigName}:`),
+		);
+	});
+
+	it("should reject empty string command (prePush: '')", async () => {
+		await writeTestConfig(
+			"empty-command",
+			`
+      export const config = {
+        "pre-push": ""
+      };
+    `,
+		);
+
+		const config = await loadConfig();
+
+		expect(config).toBeNull();
+		expect(console.error).toHaveBeenCalledWith(
+			expect.stringContaining(`Invalid configuration in ${currentConfigName}:`),
+		);
+	});
+
 	it("should handle configuration with sequential options", async () => {
 		await writeTestConfig(
 			"sequential",

@@ -11,12 +11,17 @@ import { fileExists } from "../utils/fs";
 import { logger } from "../utils/logger";
 import { kebabToCamel } from "../utils/string";
 
+const NonEmptyCommandString = v.pipe(
+	v.string(),
+	v.check((s) => s.trim().length > 0, "Command must not be empty"),
+);
+
 /**
  * Valibot schema for Git hook configuration validation.
  */
 const CommandSchema = v.union([
-	v.string(),
-	v.tuple([v.string(), v.function()]),
+	NonEmptyCommandString,
+	v.tuple([NonEmptyCommandString, v.function()]),
 ]);
 
 const ScriptSchema = v.union([CommandSchema, v.array(CommandSchema)]);
