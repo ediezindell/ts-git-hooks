@@ -130,7 +130,7 @@ describe("loadConfig validation", () => {
 		expect(console.error).not.toHaveBeenCalled();
 	});
 
-	it("should reject tuple with empty script name (['', () => []])", async () => {
+	it("should reject a command list containing a tuple with empty script name", async () => {
 		await writeTestConfig(
 			"empty-tuple-command",
 			`
@@ -164,6 +164,9 @@ describe("loadConfig validation", () => {
 		expect(console.error).toHaveBeenCalledWith(
 			expect.stringContaining(`Invalid configuration in ${currentConfigName}:`),
 		);
+		expect(console.error).toHaveBeenCalledWith(
+			expect.stringContaining("Command must not be empty"),
+		);
 	});
 
 	it("should reject empty string command in glob value ({ '*.ts': '' })", async () => {
@@ -182,6 +185,9 @@ describe("loadConfig validation", () => {
 		expect(console.error).toHaveBeenCalledWith(
 			expect.stringContaining(`Invalid configuration in ${currentConfigName}:`),
 		);
+		expect(console.error).toHaveBeenCalledWith(
+			expect.stringContaining("Command must not be empty"),
+		);
 	});
 
 	it("should reject empty string command (prePush: '')", async () => {
@@ -199,6 +205,9 @@ describe("loadConfig validation", () => {
 		expect(config).toBeNull();
 		expect(console.error).toHaveBeenCalledWith(
 			expect.stringContaining(`Invalid configuration in ${currentConfigName}:`),
+		);
+		expect(console.error).toHaveBeenCalledWith(
+			expect.stringContaining("Command must not be empty"),
 		);
 	});
 
