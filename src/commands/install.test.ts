@@ -515,15 +515,23 @@ fi`;
 		// Act
 		await install();
 
-		// Assert
+		// Assert: exactly 1 hook is rename-installed (sequential / replay-formatter
+		// are global options and must not produce hook files). Atomic write places
+		// content via writeFile(tmp) → rename(tmp, hookPath), so count rename calls
+		// whose dest is a hook path under gitHooksDir (excluding the .tmp / registry).
 		const preCommitPath = path.join(gitHooksDir, "pre-commit");
-		expect(fs.writeFile).toHaveBeenCalledWith(
-			preCommitPath,
-			expect.stringContaining("ts-git-hooks run pre-commit"),
-			"utf-8",
+		expect(getInstalledContent(preCommitPath)).toContain(
+			"ts-git-hooks run pre-commit",
 		);
-		// Confirm only 1 hook file (not sequential or replay-formatter)
-		expect(fs.writeFile).toHaveBeenCalledTimes(1);
+		const hookRenames = vi.mocked(fs.rename).mock.calls.filter((c) => {
+			const dest = String(c[1]);
+			return (
+				dest.startsWith(`${gitHooksDir}/`) &&
+				!dest.endsWith(".tmp") &&
+				!dest.endsWith(".json")
+			);
+		});
+		expect(hookRenames).toHaveLength(1);
 	});
 
 	it("should not write a hook file for the global option 'replayFormatter'", async () => {
