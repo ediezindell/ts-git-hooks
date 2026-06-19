@@ -86,9 +86,7 @@ describe("install command", () => {
 		const writtenTmps = vi
 			.mocked(fs.writeFile)
 			.mock.calls.map((c) => String(c[0]));
-		const unlinked = vi
-			.mocked(fs.unlink)
-			.mock.calls.map((c) => String(c[0]));
+		const unlinked = vi.mocked(fs.unlink).mock.calls.map((c) => String(c[0]));
 		expect(writtenTmps.length).toBeGreaterThan(0);
 		for (const tmp of writtenTmps) {
 			expect(unlinked).toContain(tmp);
@@ -120,7 +118,9 @@ describe("install command", () => {
 		// not via a direct writeFile(hookPath, ...). This defeats symlink-follow
 		// and closes the TOCTOU window between writeFile and chmod.
 		const preCommitPath = path.join(gitHooksDir, "pre-commit");
-		const renameDests = vi.mocked(fs.rename).mock.calls.map((c) => String(c[1]));
+		const renameDests = vi
+			.mocked(fs.rename)
+			.mock.calls.map((c) => String(c[1]));
 		expect(renameDests).toContain(preCommitPath);
 	});
 
@@ -138,12 +138,8 @@ describe("install command", () => {
 			...vi.mocked(fs.writeFile).mock.calls.map((c) => String(c[0])),
 			...vi.mocked(fs.rename).mock.calls.map((c) => String(c[1])),
 		];
-		expect(
-			calls.some((p) => p.startsWith(`${worktreeHooksDir}/`)),
-		).toBe(true);
-		expect(
-			calls.some((p) => p.startsWith(`${gitHooksDir}/`)),
-		).toBe(false);
+		expect(calls.some((p) => p.startsWith(`${worktreeHooksDir}/`))).toBe(true);
+		expect(calls.some((p) => p.startsWith(`${gitHooksDir}/`))).toBe(false);
 	});
 
 	it("should write hook files with optimized script when package manager is npm", async () => {
