@@ -15,9 +15,16 @@ vi.mock("node:fs", () => ({
 		rename: vi.fn(),
 		unlink: vi.fn(),
 		readFile: vi.fn(),
+		lstat: vi.fn(),
 		access: vi.fn().mockRejectedValue(new Error("File not found")), // Default to not found
 	},
 }));
+
+function enoent(): NodeJS.ErrnoException {
+	const e = new Error("ENOENT") as NodeJS.ErrnoException;
+	e.code = "ENOENT";
+	return e;
+}
 vi.mock("../core/config");
 vi.mock("../utils/packageManager");
 vi.mock("../utils/git", () => ({
@@ -53,8 +60,15 @@ describe("install command", () => {
 		});
 		vi.mocked(getPackageManager).mockReturnValue("npm");
 		vi.mocked(getGitHooksDir).mockResolvedValue(gitHooksDir);
+		// Default: no pre-existing hook files at hookPath
+		vi.mocked(fs.lstat).mockRejectedValue(enoent());
+		// Default: registry file does not exist (fresh install); package.json reads ok
 		const pkg = { scripts: { lint: "eslint .", test: "vitest" } };
-		vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(pkg));
+		vi.mocked(fs.readFile).mockImplementation(async (p) => {
+			const s = String(p);
+			if (s.endsWith(".ts-git-hooks-installed.json")) throw enoent();
+			return JSON.stringify(pkg);
+		});
 		vi.spyOn(console, "log").mockImplementation(() => {});
 		vi.spyOn(console, "error").mockImplementation(() => {});
 	});
@@ -72,6 +86,183 @@ describe("install command", () => {
 
 		// Assert
 		expect(fs.mkdir).toHaveBeenCalledWith(gitHooksDir, { recursive: true });
+	});
+
+	it("should populate the registry with only the hooks present in config (triangulation)", async () => {
+		// Arrange: only pre-commit configured
+		vi.mocked(loadConfig).mockResolvedValueOnce({
+			"pre-commit": { run: ["lint"] },
+		});
+
+		// Act
+		await install();
+
+		// Assert
+		const registryWrite = vi.mocked(fs.writeFile).mock.calls.find((c) => {
+			try {
+				const parsed = JSON.parse(String(c[1]));
+				return parsed && Array.isArray(parsed.hooks);
+			} catch {
+				return false;
+			}
+		});
+		const hooks = JSON.parse(String(registryWrite?.[1])).hooks;
+		expect(hooks).toEqual(["pre-commit"]);
+	});
+
+	it("should write a registry file listing the installed hook names", async () => {
+		// Act
+		await install();
+
+		// Assert: somewhere among the writeFile calls is a JSON payload with a
+		// "hooks" array containing the installed hook names. The exact path may
+		// be a tmp path (atomic write); content is what matters here.
+		const registryWrite = vi.mocked(fs.writeFile).mock.calls.find((c) => {
+			try {
+				const parsed = JSON.parse(String(c[1]));
+				return parsed && Array.isArray(parsed.hooks);
+			} catch {
+				return false;
+			}
+		});
+		expect(registryWrite, "registry writeFile not called").toBeTruthy();
+		const hooks = JSON.parse(String(registryWrite?.[1])).hooks;
+		expect(hooks).toContain("pre-commit");
+		expect(hooks).toContain("pre-push");
+	});
+
+	it("should back up a pre-existing unmanaged hook file before installing", async () => {
+		// Arrange: hookPath exists, registry says no managed hooks
+		vi.mocked(fs.lstat).mockResolvedValue({
+			isSymbolicLink: () => false,
+			isFile: () => true,
+		} as any);
+
+		// Act
+		await install();
+
+		// Assert: a rename moved the existing file into a backup dir
+		// (rename src = original hookPath, dest starts with backup dir)
+		const preCommitPath = path.join(gitHooksDir, "pre-commit");
+		const backupRenames = vi
+			.mocked(fs.rename)
+			.mock.calls.filter(
+				(c) =>
+					String(c[0]) === preCommitPath &&
+					String(c[1]).includes(".ts-git-hooks-backups"),
+			);
+		expect(backupRenames.length).toBe(1);
+	});
+
+	it("should not back up when the pre-existing hook is managed (in registry)", async () => {
+		// Arrange: hookPath exists; registry already has pre-commit / pre-push as managed
+		vi.mocked(fs.lstat).mockResolvedValue({
+			isSymbolicLink: () => false,
+			isFile: () => true,
+		} as any);
+		vi.mocked(fs.readFile).mockImplementation(async (p) => {
+			const s = String(p);
+			if (s.endsWith(".ts-git-hooks-installed.json")) {
+				return JSON.stringify({ hooks: ["pre-commit", "pre-push"] });
+			}
+			return JSON.stringify({ scripts: { lint: "eslint .", test: "vitest" } });
+		});
+
+		// Act
+		await install();
+
+		// Assert: no rename into a backup dir
+		const backupRenames = vi
+			.mocked(fs.rename)
+			.mock.calls.filter((c) =>
+				String(c[1]).includes(".ts-git-hooks-backups"),
+			);
+		expect(backupRenames.length).toBe(0);
+	});
+
+	it("should not back up when no pre-existing hook file is present", async () => {
+		// Arrange: default beforeEach has lstat → ENOENT
+		// Act
+		await install();
+		// Assert
+		const backupRenames = vi
+			.mocked(fs.rename)
+			.mock.calls.filter((c) =>
+				String(c[1]).includes(".ts-git-hooks-backups"),
+			);
+		expect(backupRenames.length).toBe(0);
+	});
+
+	it("should back up a pre-existing symlink at hookPath (preserves the symlink)", async () => {
+		// Arrange: hookPath is a symlink
+		vi.mocked(fs.lstat).mockResolvedValue({
+			isSymbolicLink: () => true,
+			isFile: () => false,
+		} as any);
+
+		// Act
+		await install();
+
+		// Assert: rename moves the symlink to backup (rename preserves type)
+		const preCommitPath = path.join(gitHooksDir, "pre-commit");
+		const backupRenames = vi
+			.mocked(fs.rename)
+			.mock.calls.filter(
+				(c) =>
+					String(c[0]) === preCommitPath &&
+					String(c[1]).includes(".ts-git-hooks-backups"),
+			);
+		expect(backupRenames.length).toBe(1);
+	});
+
+	it("should create the backup dir with mode 0o700", async () => {
+		// Arrange: hookPath exists so a backup is taken
+		vi.mocked(fs.lstat).mockResolvedValue({
+			isSymbolicLink: () => false,
+			isFile: () => true,
+		} as any);
+
+		// Act
+		await install();
+
+		// Assert: an mkdir for a backups path was made with mode 0o700
+		const backupMkdirs = vi.mocked(fs.mkdir).mock.calls.filter((c) => {
+			const p = String(c[0]);
+			const opts = c[1] as { mode?: number } | undefined;
+			return p.includes(".ts-git-hooks-backups") && opts?.mode === 0o700;
+		});
+		expect(backupMkdirs.length).toBeGreaterThan(0);
+	});
+
+	it("should log a warning containing the backup path when displacing an existing hook", async () => {
+		// Arrange
+		vi.mocked(fs.lstat).mockResolvedValue({
+			isSymbolicLink: () => false,
+			isFile: () => true,
+		} as any);
+
+		// Act
+		await install();
+
+		// Assert: logger.warn (routed through console.log) mentions a backup path
+		const warns = vi
+			.mocked(console.log)
+			.mock.calls.map((c) => c.join(" "))
+			.filter((s) => s.includes(".ts-git-hooks-backups"));
+		expect(warns.length).toBeGreaterThan(0);
+	});
+
+	it("should update the registry atomically (writeFile to tmp, rename to final)", async () => {
+		// Act
+		await install();
+
+		// Assert: there is a rename whose dest ends with the registry filename
+		const renameDests = vi
+			.mocked(fs.rename)
+			.mock.calls.map((c) => String(c[1]));
+		expect(
+			renameDests.some((p) => p.endsWith(".ts-git-hooks-installed.json")),
+		).toBe(true);
 	});
 
 	it("should unlink the temp file when rename fails (best-effort cleanup)", async () => {

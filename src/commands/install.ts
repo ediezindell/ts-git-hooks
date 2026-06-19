@@ -12,6 +12,9 @@ import {
 	type PackageManager,
 } from "../utils/packageManager";
 
+const REGISTRY_FILENAME = ".ts-git-hooks-installed.json";
+const BACKUPS_DIRNAME = ".ts-git-hooks-backups";
+
 /**
  * Generates the shell script content for a git hook.
  * This script will call the ts-git-hooks runner for the specific hook.
@@ -74,6 +77,20 @@ else
 fi`;
 }
 
+async function readRegistry(gitHooksDir: string): Promise<string[]> {
+	const registryPath = path.join(gitHooksDir, REGISTRY_FILENAME);
+	try {
+		const content = await fs.readFile(registryPath, "utf-8");
+		const parsed = JSON.parse(content);
+		return Array.isArray(parsed.hooks)
+			? parsed.hooks.filter((h: unknown) => typeof h === "string")
+			: [];
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw err;
+	}
+}
+
 /**
  * Installs the git hooks based on the configuration file.
  */
@@ -93,6 +110,13 @@ export async function install() {
 		// 1. Ensure the .git/hooks directory exists.
 		await fs.mkdir(gitHooksDir, { recursive: true });
 
+		const existingRegistry = await readRegistry(gitHooksDir);
+		const backupDir = path.join(
+			gitHooksDir,
+			BACKUPS_DIRNAME,
+			new Date().toISOString().replace(/[:.]/g, "-"),
+		);
+
 		const installedHooks: KebabCaseGitHook[] = [];
 		const hookNames = Object.keys(config) as CamelCaseGitHook[];
 
@@ -110,6 +134,22 @@ export async function install() {
 				}
 
 				const hookPath = path.join(gitHooksDir, kebabCaseHookName);
+
+				// Back up a pre-existing non-managed hook so the install does not
+				// silently destroy a user-authored or third-party hook.
+				if (!existingRegistry.includes(kebabCaseHookName)) {
+					try {
+						await fs.lstat(hookPath);
+						await fs.mkdir(backupDir, { recursive: true, mode: 0o700 });
+						const backupPath = path.join(backupDir, kebabCaseHookName);
+						await fs.rename(hookPath, backupPath);
+						logger.warn(
+							`Backed up existing ${kebabCaseHookName} to ${backupPath}`,
+						);
+					} catch (err) {
+						if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+					}
+				}
 
 				const command = getHookExecutionCommand(
 					packageManager,
@@ -137,6 +177,22 @@ export async function install() {
 		);
 
 		if (installedHooks.length > 0) {
+			const registryPath = path.join(gitHooksDir, REGISTRY_FILENAME);
+			const registryTmp = `${registryPath}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+			const merged = Array.from(
+				new Set([...existingRegistry, ...installedHooks]),
+			);
+			try {
+				await fs.writeFile(
+					registryTmp,
+					JSON.stringify({ hooks: merged }),
+					"utf-8",
+				);
+				await fs.rename(registryTmp, registryPath);
+			} catch (err) {
+				await fs.unlink(registryTmp).catch(() => {});
+				throw err;
+			}
 			logger.success("ts-git-hooks installed successfully.");
 			for (const hookName of installedHooks) {
 				logger.log(`  - ${hookName}`);
