@@ -1,16 +1,16 @@
+import { randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { quote } from "shell-quote";
 import { loadConfig } from "../core/config";
 import type { CamelCaseGitHook, KebabCaseGitHook } from "../types";
 import { toKebabCase } from "../utils/casing";
+import { getGitHooksDir } from "../utils/git";
 import { logger } from "../utils/logger";
 import {
 	getPackageManager,
 	type PackageManager,
 } from "../utils/packageManager";
-
-const gitHooksDir = path.join(process.cwd(), ".git", "hooks");
 
 /**
  * Generates the shell script content for a git hook.
@@ -88,6 +88,7 @@ export async function install() {
 
 	try {
 		const packageManager = getPackageManager();
+		const gitHooksDir = await getGitHooksDir();
 
 		// 1. Ensure the .git/hooks directory exists.
 		await fs.mkdir(gitHooksDir, { recursive: true });
@@ -117,11 +118,19 @@ export async function install() {
 				);
 				const scriptContent = hookScriptContent(command);
 
-				// 2. Write the hook script file.
-				await fs.writeFile(hookPath, scriptContent, "utf-8");
-
-				// 3. Make the hook script executable.
-				await fs.chmod(hookPath, 0o755);
+				// Atomic, symlink-safe write: stage the script in a sibling tmp file
+				// so that rename() replaces the directory entry without following any
+				// pre-existing symlink at hookPath, and the mode is set before the
+				// final placement (no TOCTOU between write and chmod).
+				const tmpPath = `${hookPath}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+				try {
+					await fs.writeFile(tmpPath, scriptContent, "utf-8");
+					await fs.chmod(tmpPath, 0o755);
+					await fs.rename(tmpPath, hookPath);
+				} catch (err) {
+					await fs.unlink(tmpPath).catch(() => {});
+					throw err;
+				}
 
 				installedHooks.push(kebabCaseHookName);
 			}),

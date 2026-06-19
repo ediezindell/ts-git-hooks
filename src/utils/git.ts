@@ -8,7 +8,7 @@ import {
 	rename,
 	rm,
 } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { logger } from "./logger";
 import { parseNullSeparatedBuffer } from "./string";
 
@@ -106,6 +106,15 @@ async function execGit(args: string[]): Promise<string> {
 async function execGitList(args: string[]): Promise<string[]> {
 	const buf = await execGitBuffer(args);
 	return parseNullSeparatedBuffer(buf);
+}
+
+/**
+ * Resolves the absolute path to the git hooks directory via `git rev-parse --git-path hooks`.
+ * Honors GIT_DIR and linked worktrees; throws when invoked outside a git repo.
+ */
+export async function getGitHooksDir(): Promise<string> {
+	const out = (await execGit(["rev-parse", "--git-path", "hooks"])).trim();
+	return isAbsolute(out) ? out : resolve(process.cwd(), out);
 }
 
 /**
