@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { _resetPackageManager, getPackageManager } from "./packageManager";
+import {
+	_resetPackageManager,
+	assertValidPackageManager,
+	getPackageManager,
+} from "./packageManager";
 
 describe("getPackageManager", () => {
 	beforeEach(() => {
@@ -36,5 +40,19 @@ describe("getPackageManager", () => {
 
 		// Act & Assert
 		expect(getPackageManager()).toBe("npm");
+	});
+});
+
+describe("assertValidPackageManager", () => {
+	it("accepts the three known package managers", () => {
+		expect(() => assertValidPackageManager("npm")).not.toThrow();
+		expect(() => assertValidPackageManager("yarn")).not.toThrow();
+		expect(() => assertValidPackageManager("pnpm")).not.toThrow();
+	});
+
+	it("throws on an unknown value (defends string concatenation sinks against shell injection)", () => {
+		expect(() => assertValidPackageManager("bun; rm -rf /")).toThrow();
+		expect(() => assertValidPackageManager("")).toThrow();
+		expect(() => assertValidPackageManager("NPM")).toThrow();
 	});
 });
