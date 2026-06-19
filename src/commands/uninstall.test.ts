@@ -145,8 +145,6 @@ describe("uninstall command", () => {
 		// Assert: only the valid name was unlinked; the traversal one was rejected
 		const unlinkArgs = vi.mocked(fs.unlink).mock.calls.map((c) => String(c[0]));
 		expect(unlinkArgs).toContain(path.join(gitHooksDir, "pre-commit"));
-		expect(
-			unlinkArgs.some((a) => a.includes("../../etc/passwd")),
-		).toBe(false);
+		expect(unlinkArgs.some((a) => a.includes("../../etc/passwd"))).toBe(false);
 	});
 });

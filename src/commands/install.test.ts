@@ -174,9 +174,7 @@ describe("install command", () => {
 		// Assert: no rename into a backup dir
 		const backupRenames = vi
 			.mocked(fs.rename)
-			.mock.calls.filter((c) =>
-				String(c[1]).includes(".ts-git-hooks-backups"),
-			);
+			.mock.calls.filter((c) => String(c[1]).includes(".ts-git-hooks-backups"));
 		expect(backupRenames.length).toBe(0);
 	});
 
@@ -187,9 +185,7 @@ describe("install command", () => {
 		// Assert
 		const backupRenames = vi
 			.mocked(fs.rename)
-			.mock.calls.filter((c) =>
-				String(c[1]).includes(".ts-git-hooks-backups"),
-			);
+			.mock.calls.filter((c) => String(c[1]).includes(".ts-git-hooks-backups"));
 		expect(backupRenames.length).toBe(0);
 	});
 

@@ -6,7 +6,9 @@ import { logger } from "../utils/logger";
 
 const REGISTRY_FILENAME = ".ts-git-hooks-installed.json";
 
-async function readRegistryHooks(gitHooksDir: string): Promise<string[] | null> {
+async function readRegistryHooks(
+	gitHooksDir: string,
+): Promise<string[] | null> {
 	const registryPath = path.join(gitHooksDir, REGISTRY_FILENAME);
 	try {
 		const content = await fs.readFile(registryPath, "utf-8");
@@ -53,9 +55,7 @@ export async function uninstall() {
 
 	// Registry file is bookkeeping; drop it once we've processed it so a stale
 	// list does not linger after uninstall.
-	await fs
-		.unlink(path.join(gitHooksDir, REGISTRY_FILENAME))
-		.catch(() => {});
+	await fs.unlink(path.join(gitHooksDir, REGISTRY_FILENAME)).catch(() => {});
 
 	if (removed.length > 0) {
 		logger.success("ts-git-hooks uninstalled successfully.");
