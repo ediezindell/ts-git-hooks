@@ -76,8 +76,9 @@ export function isHookConfigWithOpts<_T extends string, C>(
 	return (
 		typeof value === "object" &&
 		value !== null &&
+		!Array.isArray(value) &&
 		"config" in value &&
-		!Array.isArray(value)
+		Object.keys(value).every((k) => k === "config" || k === "sequential")
 	);
 }
 
@@ -92,7 +93,7 @@ export function isGlobHookConfig<T extends string>(
 		typeof hookConfig === "object" &&
 		!Array.isArray(hookConfig) &&
 		hookConfig !== null &&
-		!("config" in hookConfig)
+		!isHookConfigWithOpts(hookConfig)
 	);
 }
 
