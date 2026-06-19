@@ -1,5 +1,21 @@
 export type PackageManager = "npm" | "yarn" | "pnpm";
 
+const VALID_PACKAGE_MANAGERS = new Set<string>(["npm", "yarn", "pnpm"]);
+
+/**
+ * Runtime guard for shell-concatenation sinks. The type system narrows
+ * call sites to PackageManager already, but this re-checks at the producer
+ * so a future map/cast bug cannot leak an arbitrary string into
+ * `${pm} run ...` style command strings executed under `shell: true`.
+ */
+export function assertValidPackageManager(
+	value: string,
+): asserts value is PackageManager {
+	if (!VALID_PACKAGE_MANAGERS.has(value)) {
+		throw new Error(`Invalid package manager: ${JSON.stringify(value)}`);
+	}
+}
+
 const USER_AGENT_MAP: Record<string, PackageManager> = {
 	yarn: "yarn",
 	pnpm: "pnpm",
@@ -32,9 +48,11 @@ export const getPackageManager = (): PackageManager => {
 		userAgent.startsWith(prefix),
 	);
 
-	memoizedPackageManager = matchedPrefix
+	const resolved = matchedPrefix
 		? USER_AGENT_MAP[matchedPrefix]
 		: DEFAULT_PACKAGE_MANAGER;
 
+	assertValidPackageManager(resolved);
+	memoizedPackageManager = resolved;
 	return memoizedPackageManager;
 };
