@@ -1,61 +1,65 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { loadConfig } from "../core/config";
-import type { CamelCaseGitHook, KebabCaseGitHook } from "../types";
-import { toKebabCase } from "../utils/casing";
 import { fileExists } from "../utils/fs";
+import { getGitHooksDir } from "../utils/git";
 import { logger } from "../utils/logger";
 
-const gitHooksDir = path.join(process.cwd(), ".git", "hooks");
-const hookIdentifier = "# This hook was installed by ts-git-hooks";
+const REGISTRY_FILENAME = ".ts-git-hooks-installed.json";
+
+async function readRegistryHooks(
+	gitHooksDir: string,
+): Promise<string[] | null> {
+	const registryPath = path.join(gitHooksDir, REGISTRY_FILENAME);
+	try {
+		const content = await fs.readFile(registryPath, "utf-8");
+		const parsed = JSON.parse(content);
+		return Array.isArray(parsed.hooks)
+			? parsed.hooks.filter((h: unknown) => typeof h === "string")
+			: [];
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+		throw err;
+	}
+}
 
 /**
- * Uninstalls git hooks managed by ts-git-hooks.
+ * Uninstalls git hooks managed by ts-git-hooks. Source of truth is the on-disk
+ * registry written by install — files not listed there are never removed,
+ * which defends against marker-substring spoofing.
  */
 export async function uninstall() {
-	const config = await loadConfig();
-	const configuredHooks = config
-		? (Object.keys(config) as CamelCaseGitHook[])
-		: [];
+	const gitHooksDir = await getGitHooksDir();
+	const registryHooks = await readRegistryHooks(gitHooksDir);
 
-	if (configuredHooks.length === 0) {
-		logger.info("No hooks configured. Nothing to uninstall.");
+	if (registryHooks === null) {
+		logger.info("No ts-git-hooks to uninstall.");
 		return;
 	}
 
-	const results = await Promise.all(
-		configuredHooks.map(async (hookName) => {
-			const kebabCaseHookName = toKebabCase(hookName);
+	const removed: string[] = [];
+	for (const hookName of registryHooks) {
+		// Re-validate names from the on-disk registry to refuse path traversal
+		// even if the file is tampered with.
+		if (!/^[a-z0-9-]+$/.test(hookName)) continue;
 
-			// Security check: only allow valid hook names to prevent path traversal
-			if (!/^[a-z0-9-]+$/.test(kebabCaseHookName)) {
-				return null;
-			}
+		const hookPath = path.join(gitHooksDir, hookName);
+		if (!(await fileExists(hookPath))) continue;
 
-			const hookPath = path.join(gitHooksDir, kebabCaseHookName);
+		try {
+			await fs.unlink(hookPath);
+			removed.push(hookName);
+		} catch (_error) {
+			// Best-effort: the file may have vanished between fileExists and unlink.
+		}
+	}
 
-			if (!(await fileExists(hookPath))) {
-				return null;
-			}
+	// Registry file is bookkeeping; drop it once we've processed it so a stale
+	// list does not linger after uninstall.
+	await fs.unlink(path.join(gitHooksDir, REGISTRY_FILENAME)).catch(() => {});
 
-			try {
-				const content = await fs.readFile(hookPath, "utf-8");
-				if (content.includes(hookIdentifier)) {
-					await fs.unlink(hookPath);
-					return kebabCaseHookName;
-				}
-			} catch (_error) {
-				// Ignore errors for reading/unlinking, as the file might be gone
-			}
-			return null;
-		}),
-	);
-
-	const removedHooks = results.filter((h): h is KebabCaseGitHook => h !== null);
-
-	if (removedHooks.length > 0) {
+	if (removed.length > 0) {
 		logger.success("ts-git-hooks uninstalled successfully.");
-		for (const hookName of removedHooks) {
+		for (const hookName of removed) {
 			logger.log(`  - Removed ${hookName}`);
 		}
 	} else {
