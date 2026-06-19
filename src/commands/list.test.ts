@@ -71,6 +71,42 @@ describe("list command", () => {
 		);
 	});
 
+	it("should still list normal hooks when global options are present", async () => {
+		// Arrange
+		vi.mocked(loadConfig).mockResolvedValue({
+			sequential: true,
+			replayFormatter: true,
+			preCommit: "lint",
+			prePush: "test",
+		} as any);
+
+		// Act
+		await list();
+
+		// Assert
+		const allLogs = logSpy.mock.calls.flat().join("\n");
+		expect(allLogs).toContain("pre-commit: lint");
+		expect(allLogs).toContain("pre-push: test");
+		expect(allLogs).not.toContain("sequential");
+		expect(allLogs).not.toContain("replay-formatter");
+	});
+
+	it("should not list 'replayFormatter' as a hook", async () => {
+		// Arrange
+		vi.mocked(loadConfig).mockResolvedValue({
+			replayFormatter: true,
+			preCommit: "lint",
+		} as any);
+
+		// Act
+		await list();
+
+		// Assert
+		const allLogs = logSpy.mock.calls.flat().join("\n");
+		expect(allLogs).not.toContain("replay-formatter");
+		expect(allLogs).toContain("pre-commit");
+	});
+
 	it("should display a message if no hooks are configured", async () => {
 		// Arrange
 		vi.mocked(loadConfig).mockResolvedValue({});

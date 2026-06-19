@@ -1,4 +1,5 @@
 import {
+	GLOBAL_OPTION_KEYS,
 	isGlobHookConfig,
 	isHookConfigWithOpts,
 	loadConfig,
@@ -65,7 +66,7 @@ export async function list() {
 
 	logger.info("Configured git hooks:");
 	for (const hookName of configuredHooks) {
-		if (hookName === "sequential") continue;
+		if (GLOBAL_OPTION_KEYS.has(hookName)) continue;
 
 		const rawHookConfig = config[hookName as CamelCaseGitHook];
 		if (!rawHookConfig) {
