@@ -56,8 +56,20 @@ let _configFileName = "git-hooks.config.ts";
 
 /**
  * For testing purposes ONLY. Sets the configuration file name to load.
+ * The value is joined with process.cwd() in loadConfig, so reject any input
+ * that could escape the cwd (path separators, traversal segments, empty).
  */
 export const _setConfigFileName = (name: string) => {
+	if (
+		name === "" ||
+		name === ".." ||
+		name.includes("/") ||
+		name.includes("\\")
+	) {
+		throw new Error(
+			`_setConfigFileName: refused unsafe value: ${JSON.stringify(name)}`,
+		);
+	}
 	_configFileName = name;
 };
 
