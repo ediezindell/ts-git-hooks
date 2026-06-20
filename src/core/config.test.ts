@@ -9,6 +9,33 @@ import {
 	loadConfig,
 } from "./config";
 
+describe("_setConfigFileName traversal guard", () => {
+	afterEach(() => {
+		_resetConfig();
+	});
+
+	it("accepts a bare filename", () => {
+		expect(() => _setConfigFileName("git-hooks.config.ts")).not.toThrow();
+		expect(() => _setConfigFileName("my-config.ts")).not.toThrow();
+	});
+
+	it("rejects path traversal payloads", () => {
+		expect(() => _setConfigFileName("../etc/passwd")).toThrow();
+		expect(() => _setConfigFileName("../../foo.ts")).toThrow();
+		expect(() => _setConfigFileName("foo/../bar.ts")).toThrow();
+	});
+
+	it("rejects absolute / separator-containing paths", () => {
+		expect(() => _setConfigFileName("/etc/passwd")).toThrow();
+		expect(() => _setConfigFileName("sub/dir.ts")).toThrow();
+		expect(() => _setConfigFileName("dir\\file.ts")).toThrow();
+	});
+
+	it("rejects empty strings", () => {
+		expect(() => _setConfigFileName("")).toThrow();
+	});
+});
+
 describe("loadConfig validation", () => {
 	let testConfigPath: string;
 	let currentConfigName: string;
