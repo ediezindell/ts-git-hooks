@@ -294,12 +294,33 @@ export async function evacuateFiles(
 		moves.push({ src, dest: join(backupDir, src) });
 	}
 
-	// 1. Create all parent directories in parallel
+	// 1. Create all parent directories in parallel with restrictive mode so
+	//    backed-up contents are not readable by other users on shared systems.
 	await Promise.all(
-		Array.from(parentDirs).map((dir) => mkdir(dir, { recursive: true })),
+		Array.from(parentDirs).map((dir) =>
+			mkdir(dir, { recursive: true, mode: 0o700 }),
+		),
 	);
 
-	// 2. Move all files in parallel
+	// 2. Refuse to rename onto a pre-existing symlink at dest — an attacker
+	//    who can stage a symlink under backupDir could otherwise redirect
+	//    evacuated files outside the intended tree.
+	await Promise.all(
+		moves.map(async ({ dest }) => {
+			try {
+				const stat = await lstat(dest);
+				if (stat.isSymbolicLink()) {
+					throw new Error(
+						`Refusing to evacuate onto pre-existing symlink at ${dest}`,
+					);
+				}
+			} catch (err) {
+				if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+			}
+		}),
+	);
+
+	// 3. Move all files in parallel
 	await Promise.all(moves.map(({ src, dest }) => rename(src, dest)));
 }
 
