@@ -9,7 +9,7 @@ import {
 	rename,
 	rm,
 } from "node:fs/promises";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	addFiles,
 	evacuateFiles,
@@ -334,6 +334,14 @@ describe("getGitStatus", () => {
 });
 
 describe("evacuateFiles", () => {
+	beforeEach(() => {
+		// Default: nothing exists at the dest. ENOENT lets evacuateFiles proceed
+		// to the rename without flagging a symlink.
+		const enoent = new Error("ENOENT") as NodeJS.ErrnoException;
+		enoent.code = "ENOENT";
+		vi.mocked(lstat).mockRejectedValue(enoent);
+	});
+
 	afterEach(() => {
 		vi.resetAllMocks();
 	});
@@ -344,6 +352,42 @@ describe("evacuateFiles", () => {
 		expect(rename).toHaveBeenCalledTimes(2);
 		expect(rename).toHaveBeenCalledWith("a.txt", "backup/a.txt");
 		expect(rename).toHaveBeenCalledWith("b/c.txt", "backup/b/c.txt");
+	});
+
+	it("should create backup parent dirs with mode 0o700 (not readable by other users)", async () => {
+		await evacuateFiles(["a.txt", "b/c.txt"], "backup");
+		const mkdirCalls = vi.mocked(mkdir).mock.calls;
+		for (const call of mkdirCalls) {
+			const opts = call[1] as { mode?: number } | undefined;
+			expect(opts?.mode).toBe(0o700);
+		}
+	});
+
+	it("should refuse to rename onto a pre-existing symlink at dest (defends against attacker-staged redirect)", async () => {
+		// Arrange: dest exists as a symlink
+		vi.mocked(lstat).mockResolvedValue({
+			isSymbolicLink: () => true,
+		} as any);
+
+		// Act & Assert
+		await expect(evacuateFiles(["a.txt"], "backup")).rejects.toThrow(
+			/symlink/i,
+		);
+		// And rename was NOT issued
+		expect(rename).not.toHaveBeenCalled();
+	});
+
+	it("should rename normally when dest does not exist (ENOENT from lstat)", async () => {
+		// Arrange: dest does not exist
+		const enoent = new Error("ENOENT") as NodeJS.ErrnoException;
+		enoent.code = "ENOENT";
+		vi.mocked(lstat).mockRejectedValue(enoent);
+
+		// Act
+		await evacuateFiles(["a.txt"], "backup");
+
+		// Assert
+		expect(rename).toHaveBeenCalledWith("a.txt", "backup/a.txt");
 	});
 });
 
