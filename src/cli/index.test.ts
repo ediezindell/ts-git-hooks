@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Mock node:child_process for respawn close-handler tests
+const mockOn = vi.fn();
+const mockSpawn = vi.fn(() => ({ on: mockOn }));
+vi.mock("node:child_process", () => ({ spawn: mockSpawn }));
+
 // Mock the command modules. These mocks will be used by the dynamic import.
 const mockInit = vi.fn();
 const mockInstall = vi.fn();
@@ -128,6 +133,76 @@ describe("CLI entry point", () => {
 		expect(errorSpy).toHaveBeenCalledWith(
 			expect.stringContaining("Unknown command"),
 		);
+		expect(exitSpy).toHaveBeenCalledWith(1);
+	});
+});
+
+describe("ensureRuntimeFlags respawn close handler", () => {
+	let exitSpy: vi.SpyInstance;
+	let savedNodeEnv: string | undefined;
+
+	beforeEach(() => {
+		vi.resetAllMocks();
+		savedNodeEnv = process.env.NODE_ENV;
+		// Disable the early-return guard so ensureRuntimeFlags actually runs
+		process.env.NODE_ENV = "production";
+		exitSpy = vi
+			.spyOn(process, "exit")
+			.mockImplementation(() => undefined as never);
+		// Stub execArgv to have NO strip-types flag → triggers the respawn path
+		vi.spyOn(process, "execArgv", "get").mockReturnValue([]);
+		// Stub a node version that satisfies the >=22.6.0 guard
+		vi.spyOn(process, "versions", "get").mockReturnValue({
+			...process.versions,
+			node: "22.6.0",
+		});
+		vi.spyOn(process, "argv", "get").mockReturnValue(["node", "ts-git-hooks"]);
+		vi.spyOn(process, "execPath", "get").mockReturnValue("/usr/bin/node");
+	});
+
+	afterEach(() => {
+		process.env.NODE_ENV = savedNodeEnv;
+		vi.restoreAllMocks();
+	});
+
+	const getCloseHandler = async (): Promise<
+		(code: number | null, signal: string | null) => void
+	> => {
+		// Reset module registry so we get a fresh import that runs ensureRuntimeFlags
+		vi.resetModules();
+		await import("./index.js");
+		// mockOn was called as child.on("close", handler)
+		const closeCallArgs = mockOn.mock.calls.find(
+			(args) => args[0] === "close",
+		);
+		if (!closeCallArgs) throw new Error("close handler not registered");
+		return closeCallArgs[1] as (
+			code: number | null,
+			signal: string | null,
+		) => void;
+	};
+
+	it("exits 1 when child is killed by a signal (SIGKILL)", async () => {
+		const handler = await getCloseHandler();
+		handler(null, "SIGKILL");
+		expect(exitSpy).toHaveBeenCalledWith(1);
+	});
+
+	it("exits 0 when child closes normally with code=0", async () => {
+		const handler = await getCloseHandler();
+		handler(0, null);
+		expect(exitSpy).toHaveBeenCalledWith(0);
+	});
+
+	it("exits 1 when child closes with non-zero code=1", async () => {
+		const handler = await getCloseHandler();
+		handler(1, null);
+		expect(exitSpy).toHaveBeenCalledWith(1);
+	});
+
+	it("exits 1 when both code and signal are null (fail-closed)", async () => {
+		const handler = await getCloseHandler();
+		handler(null, null);
 		expect(exitSpy).toHaveBeenCalledWith(1);
 	});
 });

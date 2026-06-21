@@ -35,7 +35,7 @@ function ensureRuntimeFlags() {
 			],
 			{ stdio: "inherit" },
 		);
-		child.on("close", (code) => process.exit(code ?? 0));
+		child.on("close", (code, signal) => process.exit(signal ? 1 : (code ?? 1)));
 		return true;
 	}
 	return false;
